@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-finbot}
+      POSTGRES_USER: ${POSTGRES_USER:-finbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finbot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  bot:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./credentials:/app/credentials:ro
+
+volumes:
+  postgres_data:
