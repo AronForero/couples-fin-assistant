@@ -4,7 +4,6 @@ from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,
     filters,
     ContextTypes,
 )
@@ -12,7 +11,7 @@ from config import TELEGRAM_TOKEN, ALLOWED_USER_IDS, USER_MAP
 import database
 import llm
 from handlers.expense import handle_expense
-from handlers.balance import handle_balance, handle_sheet_callback
+from handlers.balance import handle_balance
 from handlers.settings import handle_split_command, apply_split
 from handlers.chat import handle_chat
 
@@ -88,7 +87,6 @@ def main() -> None:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("split", handle_split_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dispatch))
-    app.add_handler(CallbackQueryHandler(handle_sheet_callback, pattern=r"^sheet:"))
 
     logger.info("Bot starting (polling)…")
     app.run_polling(drop_pending_updates=True)

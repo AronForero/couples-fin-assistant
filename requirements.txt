@@ -2,5 +2,3 @@ python-telegram-bot==21.*
 openai>=1.30.0
 psycopg2-binary>=2.9
 python-dotenv>=1.0
-gspread>=6.0
-google-auth>=2.0
