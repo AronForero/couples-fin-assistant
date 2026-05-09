@@ -14,6 +14,7 @@ from handlers.expense import handle_expense
 from handlers.balance import handle_balance
 from handlers.settings import handle_split_command, apply_split
 from handlers.chat import handle_chat
+from handlers.token import handle_token
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -86,6 +87,7 @@ def main() -> None:
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("split", handle_split_command))
+    app.add_handler(CommandHandler("token", handle_token))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dispatch))
 
     logger.info("Bot starting (polling)…")

@@ -22,6 +22,16 @@ USER_MAP = {
     "mónica": "Mon",
 }
 
+# Reverse map: Telegram chat_id → user name (for /token command and API auth)
+CHAT_ID_TO_USER: dict[int, str] = {
+    247795192: "Aru",
+    1560352087: "Mon",
+}
+
+# JWT settings for dashboard API
+JWT_SECRET = os.environ.get("JWT_SECRET", "change-me")
+API_CORS_ORIGINS = os.getenv("API_CORS_ORIGINS", "http://localhost:3000")
+
 # Aru owes 63% of shared expenses paid by Mon; Mon owes 37% paid by Aru
 SPLIT = {"Aru": 0.63, "Mon": 0.37}
 
