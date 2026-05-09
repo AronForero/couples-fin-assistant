@@ -23,7 +23,7 @@ A personal finance Telegram bot for Aron (Aru) and Monica (Mon). Users send free
 | Language | Python 3.12 |
 | Telegram | `python-telegram-bot` v21 — **polling**, no SSL/webhook needed |
 | Database | PostgreSQL 16 via Docker |
-| LLM | OpenAI — model set by `LLM_MODEL` env var (default `gpt-4.1-nano`) |
+| LLM | Configurable provider — set `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` (default: OpenRouter + `openai/gpt-4.1`) |
 | Sheets export | `gspread` + Google service account |
 | Containerisation | Docker + Docker Compose |
 
@@ -35,7 +35,7 @@ finbot/
 ├── config.py               # All env vars and business constants (ALLOWED_USER_IDS, USER_MAP, CATEGORIES, etc.)
 ├── database.py             # PostgreSQL: init, expenses CRUD, settings CRUD, get_split()
 ├── finance.py              # compute_split() and compute_balance() — pure functions, no I/O
-├── llm.py                  # Three OpenAI functions: classify_intent, parse_expense, extract_month
+├── llm.py                  # Three LLM functions: classify_intent, parse_expense, extract_month
 ├── sheets.py               # Google Sheets export: export_month_to_sheet()
 ├── handlers/
 │   ├── expense.py          # handle_expense() — parse → split → save → confirm both users
@@ -155,8 +155,9 @@ Both tables are created idempotently in `database.init_db()`.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `TELEGRAM_TOKEN` | Yes | — | From @BotFather |
-| `OPENAI_API_KEY` | Yes | — | OpenAI API key |
-| `LLM_MODEL` | No | `gpt-4.1-nano` | OpenAI model name — swap here to change model |
+| `LLM_API_KEY` | Yes | — | API key for your LLM provider |
+| `LLM_BASE_URL` | No | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL (OpenRouter, Together, Groq, etc.) |
+| `LLM_MODEL` | No | `openai/gpt-4.1` | Model name — swap here to change provider/model |
 | `POSTGRES_HOST` | No | `localhost` | Use `db` inside Docker Compose |
 | `POSTGRES_PORT` | No | `5432` | |
 | `POSTGRES_DB` | No | `finbot` | |

@@ -131,7 +131,7 @@ finbot/
 ├── bot.py                  # Entry point — Telegram app + polling
 ├── config.py               # Environment variables and constants
 ├── database.py             # PostgreSQL init, CRUD, CSV export
-├── llm.py                  # OpenAI expense parsing and month extraction
+├── llm.py                  # LLM expense parsing and month extraction
 ├── finance.py              # Split calculation and balance aggregation
 ├── sheets.py               # Google Sheets export (V2)
 ├── handlers/
@@ -156,7 +156,7 @@ finbot/
 
 - Docker and Docker Compose installed
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)
-- An OpenAI API key
+- An LLM provider API key (e.g. OpenRouter, OpenAI, Groq)
 
 ### 1. Configure environment
 
@@ -169,8 +169,9 @@ Edit `.env` and fill in your values:
 ```env
 TELEGRAM_TOKEN=your_telegram_bot_token_here
 
-OPENAI_API_KEY=your_openai_api_key_here
-LLM_MODEL=gpt-4.1-nano
+LLM_API_KEY=your_llm_api_key_here
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=openai/gpt-4.1
 
 POSTGRES_HOST=db
 POSTGRES_PORT=5432
@@ -218,8 +219,9 @@ Data is persisted in a named Docker volume (`postgres_data`) and survives contai
 | Variable | Description | Default |
 |---|---|---|
 | `TELEGRAM_TOKEN` | Bot token from @BotFather | — |
-| `OPENAI_API_KEY` | OpenAI API key | — |
-| `LLM_MODEL` | OpenAI model name | `gpt-4.1-nano` |
+| `LLM_API_KEY` | API key for your LLM provider | — |
+| `LLM_BASE_URL` | OpenAI-compatible base URL | `https://openrouter.ai/api/v1` |
+| `LLM_MODEL` | Model name | `openai/gpt-4.1` |
 | `POSTGRES_HOST` | Database host | `db` (Docker service name) |
 | `POSTGRES_PORT` | Database port | `5432` |
 | `POSTGRES_DB` | Database name | `finbot` |
@@ -259,7 +261,7 @@ Month is derived at query time (`EXTRACT(MONTH FROM fecha)`), not stored separat
 | Language | Python 3.12 |
 | Telegram | `python-telegram-bot` v21 (polling) |
 | Database | PostgreSQL 16 |
-| LLM | OpenAI (configurable model) |
+| LLM | Configurable provider (OpenRouter, OpenAI, Groq, etc.) |
 | Containerisation | Docker + Docker Compose |
 
 ---

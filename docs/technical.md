@@ -25,7 +25,7 @@ The bot is a single-process async Python application. There is no webhook or pub
 
 External services called at runtime:
 - **Telegram API** — receive messages, send replies, handle inline button callbacks
-- **OpenAI API** — intent classification and expense parsing (every message)
+- **LLM provider** — intent classification and expense parsing (every message; configurable via `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`)
 - **Google Sheets API** — only when a user taps "📊 Ver en Google Sheets"
 
 ---
@@ -88,7 +88,7 @@ Commands bypass `dispatch()` and are handled directly:
 
 ## LLM Layer (`llm.py`)
 
-Three functions, each making one OpenAI chat completion call with `temperature=0` and `response_format={"type": "json_object"}`.
+Three functions, each making one chat completion call via the configured LLM provider with `temperature=0` and `response_format={"type": "json_object"}`.
 
 ### `classify_intent(text, sender, date_str) → dict`
 
@@ -263,8 +263,9 @@ volumes:
 | Variable | Required | Default | Notes |
 |---|---|---|---|
 | `TELEGRAM_TOKEN` | Yes | — | From @BotFather |
-| `OPENAI_API_KEY` | Yes | — | |
-| `LLM_MODEL` | No | `gpt-4.1-nano` | Swap model without code change |
+| `LLM_API_KEY` | Yes | — | API key for your LLM provider |
+| `LLM_BASE_URL` | No | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL |
+| `LLM_MODEL` | No | `openai/gpt-4.1` | Swap provider/model without code change |
 | `POSTGRES_HOST` | No | `localhost` | Use `db` in Docker Compose |
 | `POSTGRES_PORT` | No | `5432` | |
 | `POSTGRES_DB` | No | `finbot` | |

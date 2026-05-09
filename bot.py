@@ -14,6 +14,7 @@ import llm
 from handlers.expense import handle_expense
 from handlers.balance import handle_balance, handle_sheet_callback
 from handlers.settings import handle_split_command, apply_split
+from handlers.chat import handle_chat
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -71,6 +72,9 @@ async def dispatch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await msg.reply_text(_SPLIT_UNCLEAR_MSG)
         else:
             await apply_split(update, context, float(pct_aru), float(pct_mon))
+
+    elif intent == "chat":
+        await handle_chat(update, context)
 
     else:
         await handle_expense(update, context)
