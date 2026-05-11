@@ -28,6 +28,17 @@ CHAT_ID_TO_USER: dict[int, str] = {
     1560352087: "Mon",
 }
 
+# Reverse: user name → chat_id
+_NAME_TO_CHAT_ID: dict[str, int] = {v: k for k, v in CHAT_ID_TO_USER.items()}
+
+
+def get_partner_chat_id(sender_name: str) -> int | None:
+    """Return the chat_id of the other user (not sender_name)."""
+    for name, chat_id in _NAME_TO_CHAT_ID.items():
+        if name != sender_name:
+            return chat_id
+    return None
+
 # JWT settings for dashboard API
 JWT_SECRET = os.environ.get("JWT_SECRET", "change-me")
 API_CORS_ORIGINS = os.getenv("API_CORS_ORIGINS", "http://localhost:3000")

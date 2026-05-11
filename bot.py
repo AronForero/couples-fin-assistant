@@ -15,6 +15,9 @@ from handlers.balance import handle_balance
 from handlers.settings import handle_split_command, apply_split
 from handlers.chat import handle_chat
 from handlers.token import handle_token
+from handlers.recent import handle_recent
+from handlers.edit import handle_edit
+from handlers.delete import handle_delete
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -36,6 +39,19 @@ _SPLIT_UNCLEAR_MSG = (
     "Intenta con algo como 'el split es 65 para Aru y 35 para Mon', "
     "o usa el comando /split 65 35."
 )
+
+
+async def last_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.message.chat.id not in ALLOWED_USER_IDS:
+        return
+    args = context.args or []
+    limit = None
+    if args:
+        try:
+            limit = int(args[0])
+        except ValueError:
+            pass
+    await handle_recent(update, context, limit=limit)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -76,6 +92,15 @@ async def dispatch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif intent == "chat":
         await handle_chat(update, context)
 
+    elif intent == "recent":
+        await handle_recent(update, context, limit=params.get("limit"))
+
+    elif intent == "edit":
+        await handle_edit(update, context)
+
+    elif intent == "delete":
+        await handle_delete(update, context)
+
     else:
         await handle_expense(update, context)
 
@@ -88,6 +113,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("split", handle_split_command))
     app.add_handler(CommandHandler("token", handle_token))
+    app.add_handler(CommandHandler("last", last_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dispatch))
 
     logger.info("Bot starting (polling)…")

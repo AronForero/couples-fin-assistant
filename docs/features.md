@@ -33,7 +33,7 @@ Escribe el concepto del gasto y el valor. El orden no importa.
 Después de guardar el gasto, **ambos** reciben una confirmación:
 
 ```
-✅ Gasto registrado en la base de datos:
+✅ Gasto #42 registrado:
 📅 Fecha: 2026-05-08
 👤 Quien pagó: Mon
 🏷 SubCategoría: Supermercados
@@ -98,6 +98,70 @@ El balance tiene dos secciones: **gastos compartidos** y **tus gastos personales
 ```
 
 **Privacidad:** Cada uno ve solo sus gastos personales. Los gastos compartidos los ven ambos. La deuda se calcula únicamente sobre los gastos compartidos.
+
+---
+
+## Ver gastos recientes
+
+Para ver tus últimos gastos con sus IDs (útil para editar o eliminar):
+
+| Lo que escribes | Resultado |
+|---|---|
+| `últimos gastos` | Últimos 5 gastos |
+| `gastos recientes` | Últimos 5 gastos |
+| `últimos 10 gastos` | Últimos 10 gastos |
+| `/last` | Últimos 5 gastos |
+| `/last 15` | Últimos 15 gastos |
+
+El bot muestra una lista con el ID, categoría, concepto, valor, quién pagó y fecha de cada gasto.
+
+---
+
+## Editar un gasto
+
+Si te equivocaste al registrar un gasto, puedes corregirlo indicando el ID y lo que quieres cambiar.
+
+### Cómo saber el ID
+
+- El ID aparece en la confirmación cuando registras un gasto (ej. `Gasto #42 registrado`)
+- También puedes ver tus últimos gastos con `últimos gastos` o `/last`
+
+### Ejemplos
+
+| Lo que escribes | Resultado |
+|---|---|
+| `editar gasto 42, era compartido` | Marca el gasto #42 como compartido |
+| `gasto 42, el valor era 25000` | Cambia el valor del gasto #42 a $25,000 |
+| `corregir gasto 38, pagó Mon` | Cambia quién pagó el gasto #38 a Mon |
+| `editar gasto 42, concepto verduras del mercado, compartida` | Cambia concepto y marca como compartido |
+
+### Campos editables
+
+Puedes cambiar: **valor**, **concepto**, **fecha**, **compartida**, **quien_pago**, **categoría**, **subcategoría**.
+
+Solo menciona los campos que quieres cambiar — los demás se mantienen.
+
+### Qué pasa después
+
+- Si cambias el valor, quién pagó, o si es compartido, el bot recalcula automáticamente la deuda.
+- **Ambos** reciben la confirmación con los datos actualizados.
+
+---
+
+## Eliminar un gasto
+
+Puedes eliminar un gasto indicando el ID.
+
+### Ejemplos
+
+| Lo que escribes | Resultado |
+|---|---|
+| `eliminar gasto 42` | Pide confirmación antes de eliminar |
+| `borrar gasto 38` | Pide confirmación antes de eliminar |
+
+El bot te muestra el gasto y te pide confirmar con dos botones: **Sí, eliminar** o **No**.
+
+**Ambos** reciben notificación cuando un gasto es eliminado.
 
 ---
 
@@ -181,6 +245,7 @@ El bot asigna automáticamente una categoría y subcategoría a cada gasto.
 | *"No hay gastos registrados para ese mes."* | No hay datos en ese mes | Verifica que hayas registrado gastos en ese mes |
 | *"Los porcentajes deben sumar 100."* | Los dos números del split no suman 100 | Ej. `/split 65 35` ✓ — `/split 60 50` ✗ |
 | *"No entendí bien los porcentajes."* | El bot detectó que querías cambiar el split pero no pudo extraer los números | Sé más explícito, ej. `split 65 para Aru y 35 para Mon` |
+| *"Gasto #42 no encontrado"* | El ID que mencionaste no existe | Verifica el ID con `últimos gastos` o `/last` |
 
 ---
 
@@ -198,6 +263,9 @@ El bot solo responde a Aru y Mon. Cualquier otro usuario es ignorado silenciosam
 | Registrar gasto compartido | Escribe `compartida` o `juntos` en el mensaje (ej. `cine 30000 compartida`) |
 | Ver balance del mes | `Balance` |
 | Ver balance de otro mes | `Balance marzo` / `Balance de abril` |
+| Ver últimos gastos | `últimos gastos` o `/last` |
+| Editar un gasto | `editar gasto 42, era compartido` |
+| Eliminar un gasto | `eliminar gasto 42` |
 | Cambiar el porcentaje | `Cambia el split a 70 para Aru y 30 para Mon` o `/split 70 30` |
 | Obtener token del dashboard | `/token` |
 | Ver mensaje de bienvenida | `/start` |

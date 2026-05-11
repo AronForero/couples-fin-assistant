@@ -1,5 +1,4 @@
-import csv
-import io
+import logging
 import psycopg2
 import psycopg2.extras
 from config import (
@@ -95,6 +94,58 @@ def get_expenses_by_month(year: int, month: int) -> list[dict]:
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, (year, month))
+            return [dict(row) for row in cur.fetchall()]
+
+
+def get_expense_by_id(expense_id: int) -> dict | None:
+    sql = """
+        SELECT id, fecha, quien_pago, subcategoria, categoria,
+               concepto, valor, compartida, valor_a_pagar, observacion
+        FROM expenses
+        WHERE id = %s
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (expense_id,))
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def update_expense(expense_id: int, fields: dict) -> bool:
+    if not fields:
+        return False
+    set_clause = ", ".join(f"{k} = %({k})s" for k in fields)
+    sql = f"UPDATE expenses SET {set_clause} WHERE id = %(id)s"
+    fields["id"] = expense_id
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, fields)
+            updated = cur.rowcount > 0
+        conn.commit()
+    return updated
+
+
+def delete_expense(expense_id: int) -> bool:
+    sql = "DELETE FROM expenses WHERE id = %s"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (expense_id,))
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
+def get_recent_expenses(limit: int = 5) -> list[dict]:
+    sql = """
+        SELECT id, fecha, quien_pago, subcategoria, categoria,
+               concepto, valor, compartida, valor_a_pagar, observacion
+        FROM expenses
+        ORDER BY id DESC
+        LIMIT %s
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (limit,))
             return [dict(row) for row in cur.fetchall()]
 
 

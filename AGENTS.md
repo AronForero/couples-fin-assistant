@@ -32,7 +32,7 @@ Requires a `.env` file (copy from `.env.example`).
 
 | What to change | File | Notes |
 |---|---|---|
-| Bot intent recognition | `llm.py` → `_CLASSIFIER_SYSTEM` | Four intents: `balance`, `split_change`, `expense`, `chat` |
+| Bot intent recognition | `llm.py` → `_CLASSIFIER_SYSTEM` | Seven intents: `balance`, `split_change`, `expense`, `chat`, `recent`, `edit`, `delete` |
 | Expense parsing rules | `llm.py` → `_EXPENSE_SYSTEM` | Spanish prompt; extracts structured data from free text |
 | Expense categories | `config.py` → `CATEGORIES` | Also embedded in `_EXPENSE_SYSTEM` prompt — update both |
 | Split calculation | `finance.py` → `compute_split()` | Pure function; payer's share is calculated for the *other* person |

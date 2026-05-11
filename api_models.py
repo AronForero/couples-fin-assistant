@@ -11,6 +11,16 @@ class ExpenseCreate(BaseModel):
     compartida: str = "No"
 
 
+class ExpenseUpdate(BaseModel):
+    fecha: str | None = None
+    quien_pago: str | None = None
+    subcategoria: str | None = None
+    categoria: str | None = None
+    concepto: str | None = None
+    valor: int | None = None
+    compartida: str | None = None
+
+
 class ExpenseResponse(BaseModel):
     id: int
     fecha: str

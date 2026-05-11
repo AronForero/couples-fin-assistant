@@ -14,7 +14,7 @@ _ERROR_MSG = (
 )
 
 _CONFIRM_TEMPLATE = (
-    "✅ Gasto registrado en la base de datos:\n"
+    "✅ Gasto #{id} registrado:\n"
     "📅 Fecha: {fecha}\n"
     "👤 Quien pagó: {quien_pago}\n"
     "🏷 SubCategoría: {subcategoria}\n"
@@ -48,7 +48,7 @@ async def handle_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     expense = finance.compute_split(expense, split_aru, split_mon)
 
     try:
-        database.insert_expense(expense)
+        expense["id"] = database.insert_expense(expense)
     except Exception:
         logger.exception("DB insert failed")
         await msg.reply_text("Hubo un error al guardar el gasto. Por favor intenta de nuevo.")

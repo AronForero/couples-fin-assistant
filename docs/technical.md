@@ -52,12 +52,15 @@ finbot/
 ├── config.py               # Env vars, constants (IDs, categories, JWT secret)
 ├── database.py             # PostgreSQL connection, table init, CRUD, get_split()
 ├── finance.py              # compute_split(), compute_balance() — pure, no I/O
-├── llm.py                  # classify_intent(), parse_expense(), extract_month(), chat_reply()
+├── llm.py                  # classify_intent(), parse_expense(), extract_month(), chat_reply(), parse_edit(), parse_delete()
 ├── handlers/
 │   ├── expense.py          # handle_expense()
 │   ├── balance.py          # handle_balance()
 │   ├── chat.py             # handle_chat() — greeting regex + LLM fallback
 │   ├── token.py            # handle_token() — /token command for JWT delivery
+│   ├── recent.py           # handle_recent() — recent expenses with IDs
+│   ├── edit.py             # handle_edit() — edit expense by ID
+│   ├── delete.py           # handle_delete() — delete expense by ID with confirmation
 │   └── settings.py         # apply_split(), handle_split_command()
 ├── credentials/            # gitignored — place service_account.json here (future use)
 ├── docs/                   # This file + features.md
@@ -96,6 +99,15 @@ Text message received
         │               ├── greeting regex match → predefined reply
         │               └── otherwise → llm.chat_reply() (LLM fallback)
         │
+        ├── {"intent": "recent",       "params": {"limit": 5}}
+        │       └──▶ handle_recent(limit)
+        │
+        ├── {"intent": "edit",         "params": {"id": 42}}
+        │       └──▶ handle_edit()
+        │
+        ├── {"intent": "delete",       "params": {"id": 42}}
+        │       └──▶ handle_delete()
+        │
         └── {"intent": "expense",      "params": {}}
                 └──▶ handle_expense()
 ```
@@ -106,25 +118,31 @@ Commands bypass `dispatch()` and are handled directly:
 - `/start` → welcome message
 - `/split 65 35` → `handle_split_command()` → `apply_split()`
 - `/token` → `handle_token()` → generates JWT for the requesting user
+- `/last` or `/last 10` → `last_command()` → `handle_recent(limit)`
 
 ---
 
 ## LLM Layer (`llm.py`)
 
-Four functions. Three make JSON completion calls (`temperature=0`, `response_format=json_object`); one makes a freeform text call (`temperature=0.7`, `max_tokens=150`).
+Seven functions. Five make JSON completion calls (`temperature=0`, `response_format=json_object`); two make freeform text calls (`temperature=0.7`, `max_tokens=150`).
 
 ### `classify_intent(text, sender, date_str) → dict`
 
-Called for **every** incoming message. Returns one of four intents:
+Called for **every** incoming message. Returns one of seven intents:
 ```json
 {"intent": "balance",      "params": {"year": 2026, "month": 4}}
 {"intent": "split_change", "params": {"split_aru": 65.0, "split_mon": 35.0}}
 {"intent": "expense",      "params": {}}
 {"intent": "chat",         "params": {}}
+{"intent": "recent",       "params": {"limit": 5}}
+{"intent": "edit",         "params": {"id": 42}}
+{"intent": "delete",       "params": {"id": 42}}
 ```
 
 Key prompt rules:
 - `"expense"` requires a numeric amount — a message like `"cine"` without a number is `"chat"`
+- `"edit"` and `"delete"` require an expense ID number — without an ID, the message is `"chat"`
+- `"recent"` triggers on keywords like "últimos gastos", "historial", "mis gastos"
 - When in doubt between `"split_change"` and `"chat"`, choose `"chat"`
 - When in doubt between `"expense"` and `"chat"`, choose `"chat"`
 - For `"split_change"`, only return it if both percentages can be confidently extracted and sum to ~100
@@ -158,6 +176,18 @@ Fallback only — called by `handle_balance()` if `classify_intent` didn't retur
 ### `chat_reply(message, sender) → str`
 
 Called when `intent == "chat"` and the message is not a simple greeting. Uses a Spanish system prompt (FinBot personality, 2-3 sentences max, redirects to finance features). Returns freeform text.
+
+### `parse_edit(text, sender_name, date_str) → dict | None`
+
+Called when `intent == "edit"`. Extracts the expense ID and any fields to update from free text.
+
+Returns: `{"id": 42, "compartida": "Si"}` — only includes fields the user mentioned. Returns `None` if no ID found.
+
+### `parse_delete(text, sender_name, date_str) → dict | None`
+
+Called when `intent == "delete"`. Extracts the expense ID from messages like "eliminar gasto 42".
+
+Returns: `{"id": 42}`. Returns `None` if no ID found.
 
 ---
 
@@ -214,6 +244,10 @@ INSERT INTO settings (key, value) VALUES ('split_mon', '0.37') ON CONFLICT DO NO
 | `init_db()` | Creates both tables and seeds split defaults — idempotent |
 | `insert_expense(expense: dict) → int` | Inserts one row, returns `id` |
 | `get_expenses_by_month(year, month) → list[dict]` | All expenses for a month, ordered by fecha |
+| `get_expense_by_id(expense_id) → dict \| None` | Single expense by ID |
+| `get_recent_expenses(limit) → list[dict]` | Last N expenses, ordered by id DESC |
+| `update_expense(expense_id, fields)` | Update specific fields of an expense by ID |
+| `delete_expense(expense_id) → bool` | Delete an expense by ID |
 | `get_setting(key, default) → str` | Key/value read with fallback |
 | `set_setting(key, value)` | Upsert into settings |
 | `get_split() → tuple[float, float]` | Returns `(split_aru, split_mon)` as floats |
@@ -288,10 +322,13 @@ Token details: HS256 algorithm, 30-day expiry, secret from `JWT_SECRET` env var.
 | `GET` | `/api/balance?year=&month=` | JWT | Balance for the authenticated user (shared + personal) |
 | `GET` | `/api/settings/split` | JWT | Get current split percentages |
 | `PUT` | `/api/settings/split` | JWT | Update split (body: `{"split_aru": 65, "split_mon": 35}`, must sum to 100) |
+| `PUT` | `/api/expenses/{id}` | JWT | Update expense fields (partial body) |
+| `DELETE` | `/api/expenses/{id}` | JWT | Delete an expense |
 
 ### Pydantic models (`api_models.py`)
 
 - `ExpenseCreate` — request body for `POST /api/expenses`
+- `ExpenseUpdate` — partial body for `PUT /api/expenses/{id}` (all fields optional)
 - `ExpenseResponse` — response for expense endpoints
 - `BalanceResponse` — nested with `PersonalBalance` and `SharedBalance`
 - `SplitResponse` / `SplitUpdate` — for split settings
@@ -343,6 +380,55 @@ classify_intent → intent = "split_change", params = {split_aru, split_mon}
 ```
 
 The `/split 65 35` command takes the same path through `apply_split()`.
+
+---
+
+## Recent Expenses Pipeline
+
+```
+"últimos gastos" or /last
+    → classify_intent → intent = "recent", params = {limit}
+    → handle_recent(limit)
+        → database.get_recent_expenses(limit)
+        → format each expense with ID, emoji, concept, value, payer, date
+        → reply with list + hint: "Usa el ID para editar o eliminar"
+```
+
+Default limit: 5. Max: 20. User can specify: "últimos 10 gastos" or `/last 15`.
+
+---
+
+## Edit Pipeline
+
+```
+"editar gasto 42, era compartido"
+    → classify_intent → intent = "edit", params = {id: 42}
+    → handle_edit()
+        → llm.parse_edit(text) → {id: 42, compartida: "Si"}
+        → database.get_expense_by_id(42) → existing expense
+        → merge: overwrite only mentioned fields
+        → if valor/compartida/quien_pago changed:
+            → finance.compute_split() → recompute valor_a_pagar, observacion
+        → database.update_expense(42, fields)
+        → send updated confirmation to both ALLOWED_USER_IDS
+```
+
+Editable fields: `valor`, `concepto`, `fecha`, `compartida`, `quien_pago`, `categoria`, `subcategoria`.
+
+---
+
+## Delete Pipeline
+
+```
+"eliminar gasto 42"
+    → classify_intent → intent = "delete", params = {id: 42}
+    → handle_delete()
+        → llm.parse_delete(text) → {id: 42}
+        → database.get_expense_by_id(42) → existing expense
+        → show expense details + inline keyboard: [Sí, eliminar] [No]
+        → callback: delete_confirm:42 → database.delete_expense(42) → notify both
+        → callback: delete_cancel:42 → "Gasto no eliminado"
+```
 
 ---
 
@@ -461,6 +547,11 @@ Data persists in the `postgres_data` Docker volume across restarts and image reb
 | Unknown intent | Treated as expense attempt; falls back to help message if parsing fails |
 | Chat LLM failure | Generic help message as fallback |
 | Greeting message | Predefined random reply (no LLM call) |
+| Edit with no ID | Help message showing edit syntax |
+| Edit with invalid ID | "Gasto #N no encontrado" |
+| Delete with no ID | Help message showing delete syntax |
+| Delete with invalid ID | "Gasto #N no encontrado" |
+| API: expense not found | HTTP 404 |
 
 ---
 
