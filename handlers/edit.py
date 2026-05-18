@@ -1,7 +1,6 @@
 import logging
 from telegram import Update
 from telegram.ext import ContextTypes
-from config import ALLOWED_USER_IDS, USER_MAP, get_partner_chat_id
 import llm
 import finance
 import database
@@ -60,15 +59,18 @@ def _build_diff(before: dict, after: dict, changed_keys: set[str]) -> str:
 
 async def handle_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = update.message
-    if msg.chat.id not in ALLOWED_USER_IDS:
+    user = database.get_user_by_chat_id(msg.chat.id)
+    if not user:
         return
 
     text = msg.text or ""
     date_str = msg.date.strftime("%Y-%m-%d")
-    first_name = msg.chat.first_name or ""
-    sender = USER_MAP.get(first_name.lower(), first_name)
+    sender = user["display_name"]
 
-    edit_data = llm.parse_edit(text, sender, date_str)
+    couple_users = database.get_couple_users(user["couple_id"]) if user.get("couple_id") else []
+    user_names = tuple(u["display_name"] for u in couple_users) if len(couple_users) == 2 else ("Usuario1", "Usuario2")
+
+    edit_data = llm.parse_edit(text, sender, date_str, user_names)
     if edit_data is None or "id" not in edit_data:
         await msg.reply_text(_HELP_MSG)
         return
@@ -87,15 +89,25 @@ async def handle_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
+    if "quien_pago" in fields_to_update:
+        payer_name = fields_to_update["quien_pago"]
+        payer_user = next((u for u in couple_users if u["display_name"] == payer_name), None)
+        if payer_user:
+            fields_to_update["quien_pago_id"] = payer_user["id"]
+
     merged = dict(existing)
     merged.update(fields_to_update)
 
     needs_split_recompute = {"valor", "compartida", "quien_pago"} & set(fields_to_update.keys())
     if needs_split_recompute:
-        split_aru, split_mon = database.get_split()
-        merged = finance.compute_split(merged, split_aru, split_mon)
-        fields_to_update["valor_a_pagar"] = merged["valor_a_pagar"]
-        fields_to_update["observacion"] = merged["observacion"]
+        splits = database.get_split_for_couple(user["couple_id"]) if user.get("couple_id") else {}
+        users_dict = {u["id"]: u["display_name"] for u in couple_users}
+        if splits and users_dict:
+            merged = finance.compute_split(merged, splits, users_dict)
+            fields_to_update["valor_a_pagar"] = merged["valor_a_pagar"]
+            fields_to_update["observacion"] = merged["observacion"]
+            if "debt_user_id" in merged:
+                fields_to_update["debt_user_id"] = merged["debt_user_id"]
 
     try:
         database.update_expense(expense_id, fields_to_update)
@@ -117,8 +129,8 @@ async def handle_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     shared_before = existing.get("compartida", "No") == "Si"
     shared_after = (merged.get("compartida") or existing.get("compartida", "No")) == "Si"
     if shared_before or shared_after:
-        partner_id = get_partner_chat_id(sender)
-        if partner_id:
+        partner = database.get_partner(user["id"])
+        if partner and partner.get("chat_id"):
             diff = _build_diff(
                 {k: existing.get(k) for k in _EDITABLE_FIELDS},
                 {k: merged.get(k, existing.get(k)) for k in _EDITABLE_FIELDS},
@@ -126,11 +138,11 @@ async def handle_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
             try:
                 await context.bot.send_message(
-                    chat_id=partner_id,
+                    chat_id=partner["chat_id"],
                     text=(
                         f"⚠️ {sender} ha editado un gasto compartido #{expense_id}:\n"
                         f"{diff}"
                     ),
                 )
             except Exception:
-                logger.warning("Could not notify partner %s of edit", partner_id)
+                logger.warning("Could not notify partner %s of edit", partner["chat_id"])

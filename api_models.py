@@ -35,18 +35,17 @@ class ExpenseResponse(BaseModel):
 
 
 class PersonalBalance(BaseModel):
-    viewer: str
+    viewer_id: int
+    viewer_name: str
     viewer_gasto: int
     gastos_totales: int
     por_categoria: dict[str, int]
 
 
 class SharedBalance(BaseModel):
-    aron_gasto: int
-    mon_gasto: int
+    gastos_por_usuario: dict[int, int]
     gastos_totales: int
-    aron_debe: float
-    mon_debe: float
+    deudas_por_usuario: dict[int, float]
     balance_key: str
     deuda_total: float
     por_categoria: dict[str, int]
@@ -59,14 +58,46 @@ class BalanceResponse(BaseModel):
 
 
 class SplitResponse(BaseModel):
-    split_aru: float
-    split_mon: float
+    splits: dict[int, float]
 
 
 class SplitUpdate(BaseModel):
-    split_aru: float
-    split_mon: float
+    splits: dict[int, float]
 
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class UserRegister(BaseModel):
+    email: str
+    password: str
+    display_name: str
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+
+class JoinRequest(BaseModel):
+    invite_code: str
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    display_name: str
+    couple_id: int | None
+    chat_id: int | None
+
+
+class CoupleMember(BaseModel):
+    id: int
+    display_name: str
+    email: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"

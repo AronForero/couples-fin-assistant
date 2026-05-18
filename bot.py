@@ -7,17 +7,17 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-from config import TELEGRAM_TOKEN, ALLOWED_USER_IDS, USER_MAP
+from config import TELEGRAM_TOKEN
 import database
 import llm
 from handlers.expense import handle_expense
 from handlers.balance import handle_balance
 from handlers.settings import handle_split_command, apply_split
 from handlers.chat import handle_chat
-from handlers.token import handle_token
 from handlers.recent import handle_recent
 from handlers.edit import handle_edit
 from handlers.delete import handle_delete
+from handlers.link import handle_link
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -25,24 +25,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_WELCOME = (
-    "👋 Hola! Soy el bot de finanzas de Aru & Mon.\n\n"
-    "Puedes escribirme de forma natural:\n"
-    "• *Registrar un gasto:* 'cine 30000' o 'Mon pagó supermercado 50000'\n"
-    "• *Ver el balance:* 'Balance' o 'Balance de marzo'\n"
-    "• *Cambiar el porcentaje:* 'Cambia el split a 65 para Aru y 35 para Mon'\n"
-    "• O usa el comando */split 65 35* si prefieres"
-)
 
-_SPLIT_UNCLEAR_MSG = (
-    "No entendí bien los porcentajes. "
-    "Intenta con algo como 'el split es 65 para Aru y 35 para Mon', "
-    "o usa el comando /split 65 35."
-)
+def _get_user_names(couple_users: list[dict]) -> tuple[str, str]:
+    names = tuple(u["display_name"] for u in couple_users)
+    return names if len(names) == 2 else ("Usuario1", "Usuario2")
 
 
 async def last_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message.chat.id not in ALLOWED_USER_IDS:
+    user = database.get_user_by_chat_id(update.message.chat.id)
+    if not user:
         return
     args = context.args or []
     limit = None
@@ -55,22 +46,45 @@ async def last_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message.chat.id not in ALLOWED_USER_IDS:
+    user = database.get_user_by_chat_id(update.message.chat.id)
+    if not user:
+        await update.message.reply_text(
+            "No estás registrado. Usa /link <email> para vincular tu cuenta."
+        )
         return
-    await update.message.reply_text(_WELCOME, parse_mode="Markdown")
+
+    couple_users = database.get_couple_users(user["couple_id"]) if user.get("couple_id") else []
+    user_names = _get_user_names(couple_users)
+
+    welcome = (
+        f"👋 Hola! Soy el bot de finanzas de {user_names[0]} & {user_names[1]}.\n\n"
+        "Puedes escribirme de forma natural:\n"
+        "• *Registrar un gasto:* 'cine 30000' o 'Mon pagó supermercado 50000'\n"
+        "• *Ver el balance:* 'Balance' o 'Balance de marzo'\n"
+        "• *Cambiar el porcentaje:* 'Cambia el split a 65 para Aru y 35 para Mon'\n"
+        "• O usa el comando */split 65 35* si prefieres"
+    )
+    await update.message.reply_text(welcome, parse_mode="Markdown")
 
 
 async def dispatch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = update.message
-    if msg.chat.id not in ALLOWED_USER_IDS:
+    user = database.get_user_by_chat_id(msg.chat.id)
+    if not user:
+        await msg.reply_text(
+            "No estás registrado. Usa /link <email> para vincular tu cuenta."
+        )
         return
 
     text = msg.text or ""
     date_str = msg.date.strftime("%Y-%m-%d")
-    first_name = msg.chat.first_name or ""
-    sender = USER_MAP.get(first_name.lower(), first_name)
+    sender = user["display_name"]
+    user_id = user["id"]
 
-    classified = llm.classify_intent(text, sender, date_str)
+    couple_users = database.get_couple_users(user["couple_id"]) if user.get("couple_id") else []
+    user_names = _get_user_names(couple_users)
+
+    classified = llm.classify_intent(text, sender, date_str, user_names)
     intent = classified["intent"]
     params = classified.get("params", {})
 
@@ -82,12 +96,17 @@ async def dispatch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
     elif intent == "split_change":
-        pct_aru = params.get("split_aru")
-        pct_mon = params.get("split_mon")
-        if pct_aru is None or pct_mon is None:
-            await msg.reply_text(_SPLIT_UNCLEAR_MSG)
+        pct_user1 = params.get("split_user1")
+        pct_user2 = params.get("split_user2")
+        if pct_user1 is None or pct_user2 is None:
+            names = user_names
+            await msg.reply_text(
+                f"No entendí bien los porcentajes. "
+                f"Intenta con algo como 'el split es 65 para {names[0]} y 35 para {names[1]}', "
+                f"o usa el comando /split 65 35."
+            )
         else:
-            await apply_split(update, context, float(pct_aru), float(pct_mon))
+            await apply_split(update, context, float(pct_user1), float(pct_user2))
 
     elif intent == "chat":
         await handle_chat(update, context)
@@ -111,8 +130,8 @@ def main() -> None:
 
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("link", handle_link))
     app.add_handler(CommandHandler("split", handle_split_command))
-    app.add_handler(CommandHandler("token", handle_token))
     app.add_handler(CommandHandler("last", last_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dispatch))
 

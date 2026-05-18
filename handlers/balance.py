@@ -1,7 +1,6 @@
 import logging
 from telegram import Update
 from telegram.ext import ContextTypes
-from config import ALLOWED_USER_IDS, USER_MAP
 import llm
 import finance
 import database
@@ -15,21 +14,23 @@ def _fmt(amount: float) -> str:
     return f"${amount:,.0f}"
 
 
-def _build_summary(bal: dict) -> str:
+def _build_summary(bal: dict, users: dict[int, str]) -> str:
     shared = bal["compartido"]
     personal = bal["personal"]
-    viewer = personal["viewer"]
 
     lines = [
         f"📊 Resumen de Gastos — {bal['mes']} 📊",
         "",
         "🏠 Compartidos:",
-        f"  Aron pagó: {_fmt(shared['aron_gasto'])}",
-        f"  Mon pagó:  {_fmt(shared['mon_gasto'])}",
-        f"  Total:     {_fmt(shared['gastos_totales'])}",
-        "",
-        f"  ⚖️ {shared['balance_key']}: {_fmt(shared['deuda_total'])}",
     ]
+
+    for uid, amount in shared["gastos_por_usuario"].items():
+        name = users.get(uid, f"Usuario {uid}")
+        lines.append(f"  {name} pagó: {_fmt(amount)}")
+
+    lines.append(f"  Total:     {_fmt(shared['gastos_totales'])}")
+    lines.append("")
+    lines.append(f"  ⚖️ {shared['balance_key']}: {_fmt(shared['deuda_total'])}")
 
     shared_cats = shared["por_categoria"]
     has_shared_cats = any(v > 0 for v in shared_cats.values())
@@ -40,8 +41,9 @@ def _build_summary(bal: dict) -> str:
             if val > 0:
                 lines.append(f"    {cat}: {_fmt(val)}")
 
+    viewer_name = personal.get("viewer_name", "")
     lines.append("")
-    lines.append(f"👤 Tus gastos personales ({viewer}):")
+    lines.append(f"👤 Tus gastos personales ({viewer_name}):")
     lines.append(f"  Total: {_fmt(personal['viewer_gasto'])}")
 
     personal_cats = personal["por_categoria"]
@@ -63,11 +65,11 @@ async def handle_balance(
     month: int | None = None,
 ) -> None:
     msg = update.message
-    if msg.chat.id not in ALLOWED_USER_IDS:
+    user = database.get_user_by_chat_id(msg.chat.id)
+    if not user:
         return
 
-    first_name = msg.chat.first_name or ""
-    sender = USER_MAP.get(first_name.lower(), first_name)
+    sender = user["display_name"]
 
     if year is None or month is None:
         text = msg.text or ""
@@ -80,6 +82,9 @@ async def handle_balance(
         await msg.reply_text(_NO_DATA_MSG)
         return
 
-    bal = finance.compute_balance(expenses, viewer=sender)
-    summary = _build_summary(bal)
+    couple_users = database.get_couple_users(user["couple_id"]) if user.get("couple_id") else []
+    users_dict = {u["id"]: u["display_name"] for u in couple_users}
+
+    bal = finance.compute_balance(expenses, viewer_id=user["id"], users=users_dict)
+    summary = _build_summary(bal, users_dict)
     await msg.reply_text(summary)

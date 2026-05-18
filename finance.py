@@ -1,24 +1,48 @@
 from config import CATEGORIES, MONTH_NAMES_ES
 
 
-def compute_split(expense: dict, split_aru: float, split_mon: float) -> dict:
+def compute_split(
+    expense: dict,
+    splits: dict[int, float],
+    users: dict[int, str],
+) -> dict:
+    """Compute valor_a_pagar and observacion for an expense.
+
+    Args:
+        expense: dict with at least quien_pago_id, valor, compartida
+        splits: {user_id: percentage} e.g. {1: 0.63, 2: 0.37}
+        users: {user_id: display_name} e.g. {1: "Aru", 2: "Mon"}
+    """
     expense = dict(expense)
-    payer = expense["quien_pago"]
+    payer_id = expense["quien_pago_id"]
     valor = expense["valor"]
 
+    partner_id = next(uid for uid in splits if uid != payer_id)
+
     if expense["compartida"] == "Si":
-        other = "Mon" if payer == "Aru" else "Aru"
-        other_pct = split_mon if payer == "Aru" else split_aru
-        expense["valor_a_pagar"] = round(valor * other_pct, 2)
-        expense["observacion"] = f"{other} Debe"
+        expense["valor_a_pagar"] = round(valor * splits[partner_id], 2)
+        expense["observacion"] = f"{users[partner_id]} Debe"
+        expense["debt_user_id"] = partner_id
     else:
         expense["valor_a_pagar"] = valor
-        expense["observacion"] = f"{payer} Debe"
+        expense["observacion"] = f"{users[payer_id]} Debe"
+        expense["debt_user_id"] = payer_id
 
     return expense
 
 
-def compute_balance(expenses: list[dict], viewer: str) -> dict:
+def compute_balance(
+    expenses: list[dict],
+    viewer_id: int,
+    users: dict[int, str],
+) -> dict:
+    """Compute monthly balance for a viewer.
+
+    Args:
+        expenses: list of expense dicts
+        viewer_id: user ID of the person requesting the balance
+        users: {user_id: display_name}
+    """
     if not expenses:
         return {}
 
@@ -28,43 +52,50 @@ def compute_balance(expenses: list[dict], viewer: str) -> dict:
     cats_shared["Otros"] = 0
 
     viewer_gasto = 0
-    shared_totales = {"Aru": 0, "Mon": 0}
-    aru_debe = 0.0
-    mon_debe = 0.0
+    gastos_por_usuario = {uid: 0 for uid in users}
+    deudas_por_usuario = {uid: 0.0 for uid in users}
 
     for e in expenses:
-        payer = e["quien_pago"]
+        payer_id = e.get("quien_pago_id")
         valor = int(e["valor"])
         cat = e.get("categoria") or ""
 
         if e.get("compartida") == "Si":
-            shared_totales[payer] = shared_totales.get(payer, 0) + valor
-            obs = e.get("observacion", "")
-            vap = float(e.get("valor_a_pagar") or 0)
-            if obs == "Aru Debe":
-                aru_debe += vap
-            elif obs == "Mon Debe":
-                mon_debe += vap
+            if payer_id in gastos_por_usuario:
+                gastos_por_usuario[payer_id] += valor
+            debt_uid = e.get("debt_user_id")
+            if debt_uid and debt_uid in deudas_por_usuario:
+                vap = float(e.get("valor_a_pagar") or 0)
+                deudas_por_usuario[debt_uid] += vap
             if cat in cats_shared:
                 cats_shared[cat] += valor
             else:
                 cats_shared["Otros"] += valor
-        elif payer == viewer:
+        elif payer_id == viewer_id:
             viewer_gasto += valor
             if cat in cats_personal:
                 cats_personal[cat] += valor
             else:
                 cats_personal["Otros"] += valor
 
-    deuda = abs(aru_debe - mon_debe)
-    if aru_debe > mon_debe:
-        balance_key = "Aron debe a Mon"
-    elif mon_debe > aru_debe:
-        balance_key = "Mon debe a Aron"
-    else:
-        balance_key = "Pagaron lo mismo"
+    deuda_total = abs(deudas_por_usuario.get(viewer_id, 0) - sum(v for uid, v in deudas_por_usuario.items() if uid != viewer_id))
+    deuda_total = round(sum(deudas_por_usuario.values()) / 2, 2) if any(deudas_por_usuario.values()) else 0
 
-    shared_total = shared_totales.get("Aru", 0) + shared_totales.get("Mon", 0)
+    if len(users) == 2:
+        uid_list = list(users.keys())
+        debt0 = deudas_por_usuario.get(uid_list[0], 0)
+        debt1 = deudas_por_usuario.get(uid_list[1], 0)
+        if debt0 > debt1:
+            balance_key = f"{users[uid_list[0]]} debe a {users[uid_list[1]]}"
+        elif debt1 > debt0:
+            balance_key = f"{users[uid_list[1]]} debe a {users[uid_list[0]]}"
+        else:
+            balance_key = "Pagaron lo mismo"
+        deuda_total = abs(debt0 - debt1)
+    else:
+        balance_key = "Balance"
+
+    shared_total = sum(gastos_por_usuario.values())
 
     first_fecha = expenses[0]["fecha"]
     if isinstance(first_fecha, str):
@@ -75,19 +106,34 @@ def compute_balance(expenses: list[dict], viewer: str) -> dict:
     return {
         "mes": MONTH_NAMES_ES.get(month_num, ""),
         "personal": {
-            "viewer": viewer,
+            "viewer_id": viewer_id,
+            "viewer_name": users.get(viewer_id, ""),
             "viewer_gasto": viewer_gasto,
             "gastos_totales": viewer_gasto,
             "por_categoria": cats_personal,
         },
         "compartido": {
-            "aron_gasto": shared_totales.get("Aru", 0),
-            "mon_gasto": shared_totales.get("Mon", 0),
+            "gastos_por_usuario": gastos_por_usuario,
             "gastos_totales": shared_total,
-            "aron_debe": round(aru_debe, 2),
-            "mon_debe": round(mon_debe, 2),
+            "deudas_por_usuario": {uid: round(v, 2) for uid, v in deudas_por_usuario.items()},
             "balance_key": balance_key,
-            "deuda_total": round(deuda, 2),
+            "deuda_total": round(deuda_total, 2),
             "por_categoria": cats_shared,
         },
     }
+
+
+# ── Legacy wrappers (temporary, for old callers during transition) ────────────
+
+def compute_split_legacy(expense: dict, split_aru: float, split_mon: float) -> dict:
+    """For old callers during transition."""
+    users = {1: "Aru", 2: "Mon"}
+    splits = {1: split_aru, 2: split_mon}
+    return compute_split(expense, splits, users)
+
+
+def compute_balance_legacy(expenses: list[dict], viewer: str) -> dict:
+    """For old callers during transition."""
+    users = {1: "Aru", 2: "Mon"}
+    viewer_id = next(k for k, v in users.items() if v == viewer)
+    return compute_balance(expenses, viewer_id, users)

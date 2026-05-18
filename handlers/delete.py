@@ -1,7 +1,6 @@
 import logging
 from telegram import Update
 from telegram.ext import ContextTypes
-from config import ALLOWED_USER_IDS, USER_MAP, get_partner_chat_id
 import llm
 import database
 
@@ -17,13 +16,13 @@ _HELP_MSG = (
 
 async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = update.message
-    if msg.chat.id not in ALLOWED_USER_IDS:
+    user = database.get_user_by_chat_id(msg.chat.id)
+    if not user:
         return
 
     text = msg.text or ""
     date_str = msg.date.strftime("%Y-%m-%d")
-    first_name = msg.chat.first_name or ""
-    sender = USER_MAP.get(first_name.lower(), first_name)
+    sender = user["display_name"]
 
     delete_data = llm.parse_delete(text, sender, date_str)
     if delete_data is None or "id" not in delete_data:
@@ -40,24 +39,22 @@ async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     concepto = existing.get("concepto", "")
     valor = int(existing["valor"])
-    payer = existing["quien_pago"]
     fecha = str(existing["fecha"])
-    compartida = existing.get("compartida", "No")
 
     await msg.reply_text(
         f"🗑 Gasto #{expense_id} eliminado: {concepto} — ${valor:,}"
     )
 
-    if compartida == "Si":
-        partner_id = get_partner_chat_id(sender)
-        if partner_id:
+    if existing.get("compartida") == "Si":
+        partner = database.get_partner(user["id"])
+        if partner and partner.get("chat_id"):
             try:
                 await context.bot.send_message(
-                    chat_id=partner_id,
+                    chat_id=partner["chat_id"],
                     text=(
                         f"⚠️ {sender} ha eliminado un gasto compartido:\n"
-                        f"#{expense_id} — {concepto} — ${valor:,} ({payer}, {fecha})"
+                        f"#{expense_id} — {concepto} — ${valor:,} ({fecha})"
                     ),
                 )
             except Exception:
-                logger.warning("Could not notify partner %s of delete", partner_id)
+                logger.warning("Could not notify partner %s of delete", partner["chat_id"])

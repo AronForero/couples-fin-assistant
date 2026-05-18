@@ -11,34 +11,38 @@ _CATEGORIES_TEXT = "\n".join(
     f"- {cat}: {', '.join(subs)}" for cat, subs in CATEGORIES.items()
 )
 
-_CLASSIFIER_SYSTEM = """You are an intent classifier for a personal finance Telegram bot used by two people: Aru and Mon.
+
+# ── Dynamic prompt builders ──────────────────────────────────────────────────
+
+def _build_classifier_system(user1: str, user2: str) -> str:
+    return f"""You are an intent classifier for a personal finance Telegram bot used by two people: {user1} and {user2}.
 
 Classify the user message into exactly one of seven intents and extract any parameters. Return ONLY a JSON object — no explanation.
 
 Intents:
 1. "balance" — user wants to see their expense summary for a month.
-   Params: {"year": <int>, "month": <int>}
+   Params: {{"year": <int>, "month": <int>}}
    If no month is mentioned, use the current date provided.
 
-2. "split_change" — user wants to change the shared expense percentage between Aru and Mon.
-   Params: {"split_aru": <float>, "split_mon": <float>}
+2. "split_change" — user wants to change the shared expense percentage between {user1} and {user2}.
+   Params: {{"split_user1": <float>, "split_user2": <float>}}
    Both values are percentages (e.g. 65.0 and 35.0). They must sum to 100.
    If the user mentions only one value and says "yo" (I), use the sender name to infer which person they mean and compute the other value as 100 minus the first.
 
 3. "expense" — registering a purchase or expense. The message must contain both a concept and a numeric value/amount.
-   Params: {}
+   Params: {{}}
 
 4. "chat" — greetings, casual conversation, questions about the bot, jokes, compliments, thanks, or any message that is clearly NOT an expense, balance query, or split change.
-   Params: {}
+   Params: {{}}
 
 5. "recent" — user wants to see their recent/latest expenses. Triggered by "últimos gastos", "gastos recientes", "historial", "mis gastos", "ver gastos", etc.
-   Params: {"limit": <int>} — number of expenses to show. Default 5 if not specified.
+   Params: {{"limit": <int>}} — number of expenses to show. Default 5 if not specified.
 
 6. "edit" — user wants to modify/correct an existing expense. Must contain an expense ID number (shown as #N in confirmations).
-   Params: {"id": <int>}
+   Params: {{"id": <int>}}
 
 7. "delete" — user wants to remove/delete an existing expense. Must contain an expense ID number.
-   Params: {"id": <int>}
+   Params: {{"id": <int>}}
 
 Rules:
 - "expense" requires a numeric amount. A message like "cine" without a number is "chat".
@@ -50,29 +54,31 @@ Rules:
 - "recent" keywords: "últimos", "recientes", "historial", "ver gastos", "mis gastos".
 
 Return format examples:
-{"intent": "balance", "params": {"year": 2026, "month": 4}}
-{"intent": "split_change", "params": {"split_aru": 65.0, "split_mon": 35.0}}
-{"intent": "expense", "params": {}}
-{"intent": "chat", "params": {}}
-{"intent": "recent", "params": {"limit": 5}}
-{"intent": "edit", "params": {"id": 42}}
-{"intent": "delete", "params": {"id": 42}}"""
+{{"intent": "balance", "params": {{"year": 2026, "month": 4}}}}
+{{"intent": "split_change", "params": {{"split_user1": 65.0, "split_user2": 35.0}}}}
+{{"intent": "expense", "params": {{}}}}
+{{"intent": "chat", "params": {{}}}}
+{{"intent": "recent", "params": {{"limit": 5}}}}
+{{"intent": "edit", "params": {{"id": 42}}}}
+{{"intent": "delete", "params": {{"id": 42}}}}"""
 
-_EXPENSE_SYSTEM = f"""Eres un asistente de finanzas personales. Tu ÚNICA tarea es extraer datos de un gasto a partir del mensaje del usuario y devolver un objeto JSON válido, o null si el mensaje no contiene un gasto.
+
+def _build_expense_system(user1: str, user2: str, categories_text: str) -> str:
+    return f"""Eres un asistente de finanzas personales. Tu ÚNICA tarea es extraer datos de un gasto a partir del mensaje del usuario y devolver un objeto JSON válido, o null si el mensaje no contiene un gasto.
 
 Reglas de extracción:
 1. Valor: cualquier número positivo en el mensaje. Si el mensaje TERMINA con "Total: $###", ese número es el Valor y todo lo anterior es el Concepto.
 2. Concepto: texto descriptivo del gasto, sin incluir el número.
-3. Quien pagó: si el mensaje menciona "Aru" o "Mon", usa ese. Si no, usa el remitente.
+3. Quien pagó: si el mensaje menciona "{user1}" o "{user2}", usa ese. Si no, usa el remitente.
 4. Fecha: si el mensaje menciona una fecha específica (ej. "ayer", "01/7"), úsala. Si no, usa la fecha del mensaje.
 5. Compartida: "Si" si el mensaje contiene "compartida", "juntos", "entre ambos", "los dos", "dividido" o frases similares. Si no, "No".
 6. Categoría y SubCategoría: infiere del concepto usando esta lista:
-{_CATEGORIES_TEXT}
+{categories_text}
 
 Devuelve EXACTAMENTE este JSON (sin texto adicional):
 {{
   "fecha": "YYYY-MM-DD",
-  "quien_pago": "Aru" o "Mon",
+  "quien_pago": "{user1}" o "{user2}",
   "subcategoria": "...",
   "categoria": "...",
   "concepto": "...",
@@ -82,6 +88,58 @@ Devuelve EXACTAMENTE este JSON (sin texto adicional):
 
 Si el mensaje NO contiene un concepto y un valor numérico, devuelve exactamente: null"""
 
+
+def _build_chat_system(user1: str, user2: str) -> str:
+    return f"""Eres un bot de finanzas personales para una pareja: {user1} y {user2}.
+Tu nombre es FinBot. Hablas en español de forma amigable, breve y con buena onda.
+Si te preguntan qué puedes hacer, menciona que puedes registrar gastos, mostrar el balance mensual y cambiar el porcentaje de gastos compartidos.
+Si el usuario saluda, responde de forma cálida y breve.
+Si te hacen preguntas fuera de tema, responde brevemente y redirige amablemente a tus funciones de finanzas.
+Nunca inventes datos financieros. Máximo 2-3 oraciones."""
+
+
+def _build_edit_system(user1: str, user2: str, categories_text: str) -> str:
+    return f"""Eres un asistente de finanzas personales. Tu tarea es extraer el ID del gasto a editar y los campos que el usuario quiere cambiar.
+
+Devuelve SOLO un objeto JSON con el ID y los campos a modificar. Solo incluye los campos que el usuario menciona explícitamente.
+
+Campos editables:
+- id: número del gasto (obligatorio)
+- valor: monto numérico
+- concepto: descripción del gasto
+- fecha: fecha en formato YYYY-MM-DD
+- compartida: "Si" o "No"
+- quien_pago: "{user1}" o "{user2}"
+- categoria: categoría del gasto
+- subcategoria: subcategoría del gasto
+
+Categorías disponibles:
+{categories_text}
+
+Ejemplos:
+- "editar gasto 42, era compartido" → {{"id": 42, "compartida": "Si"}}
+- "gasto 42, el valor era 25000" → {{"id": 42, "valor": 25000}}
+- "editar gasto 42, concepto verduras del mercado, valor 25000" → {{"id": 42, "concepto": "verduras del mercado", "valor": 25000}}
+- "corregir gasto 38, pagó {user2}" → {{"id": 38, "quien_pago": "{user2}"}}
+- "cambia el gasto 42 a no compartida" → {{"id": 42, "compartida": "No"}}
+
+Si el mensaje NO contiene un ID de gasto, devuelve exactamente: null"""
+
+
+_DELETE_SYSTEM = """Eres un asistente de finanzas personales. Tu tarea es extraer el ID del gasto a eliminar del mensaje del usuario.
+
+Devuelve SOLO un objeto JSON con el ID del gasto.
+
+Ejemplos:
+- "eliminar gasto 42" → {"id": 42}
+- "borrar gasto 38" → {"id": 38}
+- "quita el gasto 42" → {"id": 42}
+- "eliminar el gasto número 15" → {"id": 15}
+
+Si el mensaje NO contiene un ID de gasto, devuelve exactamente: null"""
+
+
+# ── LLM helpers ──────────────────────────────────────────────────────────────
 
 def _chat_json(system: str, user: str) -> dict | None:
     resp = _client.chat.completions.create(
@@ -109,14 +167,17 @@ def _chat_text(system: str, user: str, max_tokens: int = 150) -> str:
     return resp.choices[0].message.content.strip()
 
 
-def classify_intent(text: str, sender: str, date_str: str) -> dict:
+# ── Public functions ─────────────────────────────────────────────────────────
+
+def classify_intent(text: str, sender: str, date_str: str, user_names: tuple[str, str] = ("Aru", "Mon")) -> dict:
     """
     Returns {"intent": "balance"|"split_change"|"expense"|"chat"|"recent"|"edit"|"delete", "params": {...}}.
     Falls back to expense intent on any error.
     """
+    system = _build_classifier_system(user_names[0], user_names[1])
     user_msg = f"Sender: {sender}\nCurrent date: {date_str}\nMessage: {text}"
     try:
-        data = _chat_json(_CLASSIFIER_SYSTEM, user_msg)
+        data = _chat_json(system, user_msg)
         intent = data.get("intent", "expense")
         params = data.get("params", {})
         if intent not in {"balance", "split_change", "expense", "chat", "recent", "edit", "delete"}:
@@ -127,9 +188,10 @@ def classify_intent(text: str, sender: str, date_str: str) -> dict:
         return {"intent": "expense", "params": {}}
 
 
-def parse_expense(text: str, sender_name: str, date_str: str) -> dict | None:
+def parse_expense(text: str, sender_name: str, date_str: str, user_names: tuple[str, str] = ("Aru", "Mon")) -> dict | None:
+    system = _build_expense_system(user_names[0], user_names[1], _CATEGORIES_TEXT)
     user_msg = f"Remitente: {sender_name}\nFecha del mensaje: {date_str}\nMensaje: {text}"
-    parsed = _chat_json(_EXPENSE_SYSTEM, user_msg)
+    parsed = _chat_json(system, user_msg)
     if parsed is None:
         return None
     if set(parsed.keys()) == {"result"}:
@@ -151,52 +213,19 @@ Never add any explanation."""
     return int(data["year"]), int(data["month"])
 
 
-_CHAT_SYSTEM = """Eres un bot de finanzas personales para una pareja: Aru y Mon.
-Tu nombre es FinBot. Hablas en español de forma amigable, breve y con buena onda.
-Si te preguntan qué puedes hacer, menciona que puedes registrar gastos, mostrar el balance mensual y cambiar el porcentaje de gastos compartidos.
-Si el usuario saluda, responde de forma cálida y breve.
-Si te hacen preguntas fuera de tema, responde brevemente y redirige amablemente a tus funciones de finanzas.
-Nunca inventes datos financieros. Máximo 2-3 oraciones."""
-
-
-def chat_reply(message: str, sender: str) -> str:
+def chat_reply(message: str, sender: str, user_names: tuple[str, str] = ("Aru", "Mon")) -> str:
     """Generate a conversational reply for non-expense messages."""
+    system = _build_chat_system(user_names[0], user_names[1])
     user_msg = f"Remitente: {sender}\nMensaje: {message}"
-    return _chat_text(_CHAT_SYSTEM, user_msg)
+    return _chat_text(system, user_msg)
 
 
-_EDIT_SYSTEM = f"""Eres un asistente de finanzas personales. Tu tarea es extraer el ID del gasto a editar y los campos que el usuario quiere cambiar.
-
-Devuelve SOLO un objeto JSON con el ID y los campos a modificar. Solo incluye los campos que el usuario menciona explícitamente.
-
-Campos editables:
-- id: número del gasto (obligatorio)
-- valor: monto numérico
-- concepto: descripción del gasto
-- fecha: fecha en formato YYYY-MM-DD
-- compartida: "Si" o "No"
-- quien_pago: "Aru" o "Mon"
-- categoria: categoría del gasto
-- subcategoria: subcategoría del gasto
-
-Categorías disponibles:
-{_CATEGORIES_TEXT}
-
-Ejemplos:
-- "editar gasto 42, era compartido" → {{"id": 42, "compartida": "Si"}}
-- "gasto 42, el valor era 25000" → {{"id": 42, "valor": 25000}}
-- "editar gasto 42, concepto verduras del mercado, valor 25000" → {{"id": 42, "concepto": "verduras del mercado", "valor": 25000}}
-- "corregir gasto 38, pagó Mon" → {{"id": 38, "quien_pago": "Mon"}}
-- "cambia el gasto 42 a no compartida" → {{"id": 42, "compartida": "No"}}
-
-Si el mensaje NO contiene un ID de gasto, devuelve exactamente: null"""
-
-
-def parse_edit(text: str, sender_name: str, date_str: str) -> dict | None:
+def parse_edit(text: str, sender_name: str, date_str: str, user_names: tuple[str, str] = ("Aru", "Mon")) -> dict | None:
     """Extract expense ID and fields to update from an edit message."""
+    system = _build_edit_system(user_names[0], user_names[1], _CATEGORIES_TEXT)
     user_msg = f"Remitente: {sender_name}\nFecha del mensaje: {date_str}\nMensaje: {text}"
     try:
-        parsed = _chat_json(_EDIT_SYSTEM, user_msg)
+        parsed = _chat_json(system, user_msg)
         if parsed is None:
             return None
         if set(parsed.keys()) == {"result"}:
@@ -207,19 +236,6 @@ def parse_edit(text: str, sender_name: str, date_str: str) -> dict | None:
     except Exception:
         logger.exception("parse_edit failed")
         return None
-
-
-_DELETE_SYSTEM = """Eres un asistente de finanzas personales. Tu tarea es extraer el ID del gasto a eliminar del mensaje del usuario.
-
-Devuelve SOLO un objeto JSON con el ID del gasto.
-
-Ejemplos:
-- "eliminar gasto 42" → {"id": 42}
-- "borrar gasto 38" → {"id": 38}
-- "quita el gasto 42" → {"id": 42}
-- "eliminar el gasto número 15" → {"id": 15}
-
-Si el mensaje NO contiene un ID de gasto, devuelve exactamente: null"""
 
 
 def parse_delete(text: str, sender_name: str, date_str: str) -> dict | None:

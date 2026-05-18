@@ -1,7 +1,6 @@
 import logging
 from telegram import Update
 from telegram.ext import ContextTypes
-from config import ALLOWED_USER_IDS, USER_MAP
 import llm
 import finance
 import database
@@ -29,23 +28,35 @@ _CONFIRM_TEMPLATE = (
 
 async def handle_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = update.message
-    user_id = msg.chat.id
-
-    if user_id not in ALLOWED_USER_IDS:
+    user = database.get_user_by_chat_id(msg.chat.id)
+    if not user:
         return
 
     text = msg.text or ""
     date_str = msg.date.strftime("%Y-%m-%d")
-    first_name = msg.chat.first_name or ""
-    sender = USER_MAP.get(first_name.lower(), first_name)
+    sender = user["display_name"]
 
-    expense = llm.parse_expense(text, sender, date_str)
+    couple_users = database.get_couple_users(user["couple_id"]) if user.get("couple_id") else []
+    user_names = tuple(u["display_name"] for u in couple_users) if len(couple_users) == 2 else ("Usuario1", "Usuario2")
+
+    expense = llm.parse_expense(text, sender, date_str, user_names)
     if expense is None:
         await msg.reply_text(_ERROR_MSG)
         return
 
-    split_aru, split_mon = database.get_split()
-    expense = finance.compute_split(expense, split_aru, split_mon)
+    payer_name = expense.get("quien_pago", "")
+    payer_user = next((u for u in couple_users if u["display_name"] == payer_name), None)
+    if payer_user:
+        expense["quien_pago_id"] = payer_user["id"]
+
+    splits = database.get_split_for_couple(user["couple_id"]) if user.get("couple_id") else {}
+    users_dict = {u["id"]: u["display_name"] for u in couple_users}
+
+    if splits and users_dict:
+        expense = finance.compute_split(expense, splits, users_dict)
+    else:
+        expense.setdefault("valor_a_pagar", expense["valor"])
+        expense.setdefault("observacion", "")
 
     try:
         expense["id"] = database.insert_expense(expense)
@@ -55,8 +66,9 @@ async def handle_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     confirm = _CONFIRM_TEMPLATE.format(**expense)
-    for uid in ALLOWED_USER_IDS:
-        try:
-            await context.bot.send_message(chat_id=uid, text=confirm)
-        except Exception:
-            logger.warning("Could not send confirmation to %s", uid)
+    for u in couple_users:
+        if u.get("chat_id"):
+            try:
+                await context.bot.send_message(chat_id=u["chat_id"], text=confirm)
+            except Exception:
+                logger.warning("Could not send confirmation to %s", u["chat_id"])

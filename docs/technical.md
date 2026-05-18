@@ -57,7 +57,7 @@ finbot/
 │   ├── expense.py          # handle_expense()
 │   ├── balance.py          # handle_balance()
 │   ├── chat.py             # handle_chat() — greeting regex + LLM fallback
-│   ├── token.py            # handle_token() — /token command for JWT delivery
+│   ├── link.py             # handle_link() — /link command for Telegram account linking
 │   ├── recent.py           # handle_recent() — recent expenses with IDs
 │   ├── edit.py             # handle_edit() — edit expense by ID
 │   ├── delete.py           # handle_delete() — delete expense by ID with confirmation
@@ -116,8 +116,8 @@ Text message received
 
 Commands bypass `dispatch()` and are handled directly:
 - `/start` → welcome message
+- `/link <email>` → `handle_link()` — links Telegram chat_id to user account
 - `/split 65 35` → `handle_split_command()` → `apply_split()`
-- `/token` → `handle_token()` → generates JWT for the requesting user
 - `/last` or `/last 10` → `last_command()` → `handle_recent(limit)`
 
 ---
@@ -301,27 +301,33 @@ FastAPI application running as a separate container on port 8000. CORS enabled, 
 
 ### Authentication
 
-All endpoints except `/api/health` require a JWT token in the `Authorization: Bearer <token>` header.
+All endpoints except `/api/health`, `/api/auth/register`, and `/api/auth/login` require a JWT token in the `Authorization: Bearer <token>` header.
 
 **JWT flow:**
-1. User sends `/token` to the Telegram bot
-2. Bot generates a JWT with `{"sub": "Aru", "iat": ..., "exp": +30 days}` and replies with it
-3. User pastes the token into the dashboard (stored in localStorage)
-4. Dashboard sends `Authorization: Bearer <token>` with every request
-5. API extracts user from the `sub` claim — used to filter personal expenses
+1. User registers or logs in via the dashboard (`POST /api/auth/register` or `POST /api/auth/login`)
+2. API returns a JWT with `{"sub": user_id, "iat": ..., "exp": +30 days}`
+3. Dashboard stores the token (e.g. localStorage) and sends `Authorization: Bearer <token>` with every request
+4. API extracts user ID from the `sub` claim — used to scope data to the user's couple
 
 Token details: HS256 algorithm, 30-day expiry, secret from `JWT_SECRET` env var.
+
+**Telegram linking:** Users who register via the API can link their Telegram account with `/link <email>` in the bot. This sets their `chat_id` in the DB, enabling bot access.
 
 ### Endpoints
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/api/health` | No | Returns `{"status": "ok"}` |
+| `POST` | `/api/auth/register` | No | Create user + couple, returns JWT |
+| `POST` | `/api/auth/login` | No | Email/password login, returns JWT |
+| `POST` | `/api/auth/join` | JWT | Join couple via invite code |
+| `GET` | `/api/auth/me` | JWT | Current user info |
+| `GET` | `/api/auth/couple/members` | JWT | Both users in the couple |
 | `GET` | `/api/expenses?year=&month=` | JWT | List all expenses for a month |
 | `POST` | `/api/expenses` | JWT | Create a new expense |
 | `GET` | `/api/balance?year=&month=` | JWT | Balance for the authenticated user (shared + personal) |
 | `GET` | `/api/settings/split` | JWT | Get current split percentages |
-| `PUT` | `/api/settings/split` | JWT | Update split (body: `{"split_aru": 65, "split_mon": 35}`, must sum to 100) |
+| `PUT` | `/api/settings/split` | JWT | Update split (body: `{"splits": {1: 0.65, 2: 0.35}}`) |
 | `PUT` | `/api/expenses/{id}` | JWT | Update expense fields (partial body) |
 | `DELETE` | `/api/expenses/{id}` | JWT | Delete an expense |
 
@@ -432,17 +438,6 @@ Editable fields: `valor`, `concepto`, `fecha`, `compartida`, `quien_pago`, `cate
 
 ---
 
-## Token Command
-
-```
-/token → handle_token()
-  → look up user from CHAT_ID_TO_USER[chat_id]
-  → api_auth.create_token(user)    # JWT with sub=user, exp=+30d
-  → reply with token + instructions
-```
-
----
-
 ## Docker Compose
 
 ```yaml
@@ -501,15 +496,9 @@ Both `bot` and `api` use the same Dockerfile. The `api` service overrides `CMD` 
 ## Key Constants (`config.py`)
 
 ```python
-ALLOWED_USER_IDS = {247795192, 1560352087}   # Aron, Monica
-
-USER_MAP = {"aron": "Aru", "monica": "Mon", "mónica": "Mon"}
-
-CHAT_ID_TO_USER = {247795192: "Aru", 1560352087: "Mon"}   # for /token command
-
-# Default split — seeded into settings table on first run; overridable at runtime via /split
-# Aru owes 63% of shared expenses paid by Mon
-# Mon owes 37% of shared expenses paid by Aru
+# JWT settings for dashboard API
+JWT_SECRET = os.environ.get("JWT_SECRET", "change-me")
+API_CORS_ORIGINS = os.getenv("API_CORS_ORIGINS", "http://localhost:3000")
 ```
 
 ---

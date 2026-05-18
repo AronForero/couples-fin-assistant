@@ -207,15 +207,15 @@ El primer número es el porcentaje de Aru, el segundo el de Mon. Deben sumar 100
 
 ## Acceder al dashboard
 
-El bot genera un token de acceso para el dashboard web (próximamente).
+El dashboard web se autentica con tu email y contraseña.
 
-### Cómo obtener tu token
+### Cómo acceder
 
-1. Escribe `/token` al bot en Telegram.
-2. El bot te responde con un token largo.
-3. Copia el token y pégalo en la página de login del dashboard.
+1. Abre el dashboard en el navegador.
+2. Ingresa tu email y contraseña.
+3. Listo — ya puedes ver y gestionar tus gastos.
 
-El token expira en 30 días. Cuando expire, repite el proceso con `/token`.
+Si no tienes cuenta, regístrate desde el dashboard. Si ya tienes cuenta pero usas el bot de Telegram, vincula tu cuenta con `/link <email>` en el bot.
 
 ---
 
@@ -251,7 +251,7 @@ El bot asigna automáticamente una categoría y subcategoría a cada gasto.
 
 ## Acceso
 
-El bot solo responde a Aru y Mon. Cualquier otro usuario es ignorado silenciosamente.
+El bot solo responde a usuarios registrados. Cualquier otro usuario recibe un mensaje indicando que debe vincular su cuenta con `/link <email>`.
 
 ---
 
@@ -267,5 +267,5 @@ El bot solo responde a Aru y Mon. Cualquier otro usuario es ignorado silenciosam
 | Editar un gasto | `editar gasto 42, era compartido` |
 | Eliminar un gasto | `eliminar gasto 42` |
 | Cambiar el porcentaje | `Cambia el split a 70 para Aru y 30 para Mon` o `/split 70 30` |
-| Obtener token del dashboard | `/token` |
 | Ver mensaje de bienvenida | `/start` |
+| Vincular cuenta de Telegram | `/link email@ejemplo.com` |

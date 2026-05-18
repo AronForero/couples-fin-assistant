@@ -1,62 +1,67 @@
 import logging
 from telegram import Update
 from telegram.ext import ContextTypes
-from config import ALLOWED_USER_IDS, USER_MAP
 import database
 
 logger = logging.getLogger(__name__)
 
-_USAGE_MSG = "Uso: /split <% Aru> <% Mon>  — ej. /split 65 35"
+_USAGE_MSG = "Uso: /split <% usuario1> <% usuario2>  — ej. /split 65 35"
 _SUM_ERROR_MSG = "Los porcentajes deben sumar 100. Ej: /split 65 35"
 
 
 async def apply_split(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    pct_aru: float,
-    pct_mon: float,
+    pct_user1: float,
+    pct_user2: float,
 ) -> None:
     """Persist a new split and notify both users. Called from both /split and conversational dispatch."""
     msg = update.message
-    sender_id = msg.chat.id
+    user = database.get_user_by_chat_id(msg.chat.id)
+    if not user:
+        return
 
-    if abs(pct_aru + pct_mon - 100) > 0.1:
+    if abs(pct_user1 + pct_user2 - 100) > 0.1:
         await msg.reply_text(_SUM_ERROR_MSG)
         return
 
-    split_aru = round(pct_aru / 100, 6)
-    split_mon = round(pct_mon / 100, 6)
+    couple_users = database.get_couple_users(user["couple_id"]) if user.get("couple_id") else []
+    if len(couple_users) != 2:
+        await msg.reply_text("No se pudo determinar la pareja.")
+        return
 
-    database.set_setting("split_aru", str(split_aru))
-    database.set_setting("split_mon", str(split_mon))
+    splits = {
+        couple_users[0]["id"]: round(pct_user1 / 100, 6),
+        couple_users[1]["id"]: round(pct_user2 / 100, 6),
+    }
+    database.update_split_for_couple(user["couple_id"], splits)
 
-    first_name = msg.chat.first_name or ""
-    sender_label = USER_MAP.get(first_name.lower(), first_name)
-
+    names = [u["display_name"] for u in couple_users]
     confirm = (
         f"✅ Porcentaje actualizado:\n"
-        f"Aru: {pct_aru:.4g}% · Mon: {pct_mon:.4g}%\n"
+        f"{names[0]}: {pct_user1:.4g}% · {names[1]}: {pct_user2:.4g}%\n"
         f"Aplica a los gastos nuevos a partir de ahora."
     )
     await msg.reply_text(confirm)
 
-    notification = (
-        f"⚠️ {sender_label} cambió el porcentaje de gastos compartidos:\n"
-        f"Aru: {pct_aru:.4g}% · Mon: {pct_mon:.4g}%\n"
-        f"Aplica a los gastos nuevos a partir de ahora."
-    )
-    other_ids = ALLOWED_USER_IDS - {sender_id}
-    for uid in other_ids:
+    partner = database.get_partner(user["id"])
+    if partner and partner.get("chat_id") and partner["chat_id"] != msg.chat.id:
+        notification = (
+            f"⚠️ {user['display_name']} cambió el porcentaje de gastos compartidos:\n"
+            f"{names[0]}: {pct_user1:.4g}% · {names[1]}: {pct_user2:.4g}%\n"
+            f"Aplica a los gastos nuevos a partir de ahora."
+        )
         try:
-            await context.bot.send_message(chat_id=uid, text=notification)
+            await context.bot.send_message(chat_id=partner["chat_id"], text=notification)
         except Exception:
-            logger.warning("Could not notify user %s of split change", uid)
+            logger.warning("Could not notify partner %s of split change", partner["chat_id"])
 
 
 async def handle_split_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/split command — kept as a convenience for explicit syntax."""
     msg = update.message
-    if msg.chat.id not in ALLOWED_USER_IDS:
+    user = database.get_user_by_chat_id(msg.chat.id)
+    if not user:
         return
 
     args = context.args or []
@@ -65,10 +70,10 @@ async def handle_split_command(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     try:
-        pct_aru = float(args[0])
-        pct_mon = float(args[1])
+        pct_user1 = float(args[0])
+        pct_user2 = float(args[1])
     except ValueError:
         await msg.reply_text(_USAGE_MSG)
         return
 
-    await apply_split(update, context, pct_aru, pct_mon)
+    await apply_split(update, context, pct_user1, pct_user2)

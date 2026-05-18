@@ -1,7 +1,6 @@
 import logging
 from telegram import Update
 from telegram.ext import ContextTypes
-from config import ALLOWED_USER_IDS, USER_MAP
 import database
 
 logger = logging.getLogger(__name__)
@@ -42,7 +41,8 @@ def _format_expense(e: dict) -> str:
 
 async def handle_recent(update: Update, context: ContextTypes.DEFAULT_TYPE, limit: int | None = None) -> None:
     msg = update.message
-    if msg.chat.id not in ALLOWED_USER_IDS:
+    user = database.get_user_by_chat_id(msg.chat.id)
+    if not user:
         return
 
     if limit is None:
@@ -53,9 +53,6 @@ async def handle_recent(update: Update, context: ContextTypes.DEFAULT_TYPE, limi
     if not expenses:
         await msg.reply_text("No hay gastos registrados.")
         return
-
-    first_name = msg.chat.first_name or ""
-    sender = USER_MAP.get(first_name.lower(), first_name)
 
     lines = [f"📋 Últimos {len(expenses)} gastos:\n"]
     for e in expenses:

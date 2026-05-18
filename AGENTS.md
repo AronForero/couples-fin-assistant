@@ -45,6 +45,4 @@ Requires a `.env` file (copy from `.env.example`).
 - `finance.compute_split()` calculates `valor_a_pagar` as what the *other* person owes, not the payer.
 - `database.get_split()` reads the split from the DB every time — the default seed (`0.63`/`0.37`) only applies on first run.
 - The API and bot are independent processes — they share `database.py` but never call each other.
-- `CHAT_ID_TO_USER` in `config.py` maps Telegram chat IDs to user names for the `/token` command. Hardcoded — update if user IDs change.
-- `ALLOWED_USER_IDS` is a `set` — order is not guaranteed when iterating for notifications.
 - LLM is provider-agnostic: set `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL` in `.env` to use any OpenAI-compatible provider (OpenRouter, OpenAI, Groq, Together, etc.).
