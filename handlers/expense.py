@@ -44,6 +44,13 @@ async def handle_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await msg.reply_text(_ERROR_MSG)
         return
 
+    # Solo user trying to register a shared expense
+    if expense.get("compartida") == "Si" and len(couple_users) < 2:
+        await msg.reply_text(
+            "Tu pareja aún no se unió. Usá el código en la opción Invitar en la página web para compartir gastos."
+        )
+        return
+
     payer_name = expense.get("quien_pago", "")
     payer_user = next((u for u in couple_users if u["display_name"] == payer_name), None)
     if payer_user:

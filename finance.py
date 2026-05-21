@@ -103,6 +103,11 @@ def compute_balance(
     else:
         month_num = first_fecha.month
 
+    # Build ordered arrays (sorted by user ID) — matches couple_members order
+    sorted_uids = sorted(users.keys())
+    gastos = [gastos_por_usuario.get(uid, 0) for uid in sorted_uids]
+    deudas = [round(deudas_por_usuario.get(uid, 0), 2) for uid in sorted_uids]
+
     return {
         "mes": MONTH_NAMES_ES.get(month_num, ""),
         "personal": {
@@ -113,9 +118,9 @@ def compute_balance(
             "por_categoria": cats_personal,
         },
         "compartido": {
-            "gastos_por_usuario": gastos_por_usuario,
+            "gastos": gastos,
+            "deudas": deudas,
             "gastos_totales": shared_total,
-            "deudas_por_usuario": {uid: round(v, 2) for uid, v in deudas_por_usuario.items()},
             "balance_key": balance_key,
             "deuda_total": round(deuda_total, 2),
             "por_categoria": cats_shared,

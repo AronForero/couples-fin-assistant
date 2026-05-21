@@ -43,9 +43,9 @@ class PersonalBalance(BaseModel):
 
 
 class SharedBalance(BaseModel):
-    gastos_por_usuario: dict[int, int]
+    gastos: list[int]
+    deudas: list[float]
     gastos_totales: int
-    deudas_por_usuario: dict[int, float]
     balance_key: str
     deuda_total: float
     por_categoria: dict[str, int]
@@ -89,6 +89,7 @@ class UserResponse(BaseModel):
     email: str
     display_name: str
     couple_id: int | None
+    invite_code: str | None = None
     chat_id: int | None
 
 

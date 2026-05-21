@@ -106,19 +106,33 @@ def join_couple(
     body: api_models.JoinRequest,
     user: dict = Depends(api_auth.get_current_user),
 ):
+    # Check if user already has a full couple (2 members)
     if user.get("couple_id"):
-        raise HTTPException(status_code=400, detail="Ya perteneces a una pareja")
+        members = database.get_couple_users(user["couple_id"])
+        if len(members) >= 2:
+            raise HTTPException(status_code=400, detail="Ya perteneces a una pareja completa")
+
+    old_couple_id = user.get("couple_id")
 
     success = database.join_couple(user["id"], body.invite_code)
     if not success:
         raise HTTPException(status_code=404, detail="Código de invitación inválido")
 
+    # Clean up old couple if empty
+    if old_couple_id:
+        database.delete_couple_if_empty(old_couple_id)
+
     updated = database.get_user_by_id(user["id"])
+    couple = database.get_couple_by_id(updated["couple_id"]) if updated.get("couple_id") else None
+    updated["invite_code"] = couple["invite_code"] if couple else None
     return updated
 
 
 @app.get("/api/auth/me", response_model=api_models.UserResponse)
 def get_me(user: dict = Depends(api_auth.get_current_user)):
+    if user.get("couple_id"):
+        couple = database.get_couple_by_id(user["couple_id"])
+        user["invite_code"] = couple["invite_code"] if couple else None
     return user
 
 
@@ -311,9 +325,9 @@ def get_balance(
                 "por_categoria": {},
             },
             "compartido": {
-                "gastos_por_usuario": {uid: 0 for uid in user_ids},
+                "gastos": [0] * len(user_ids),
+                "deudas": [0.0] * len(user_ids),
                 "gastos_totales": 0,
-                "deudas_por_usuario": {uid: 0.0 for uid in user_ids},
                 "balance_key": "Pagaron lo mismo",
                 "deuda_total": 0,
                 "por_categoria": {},

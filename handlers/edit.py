@@ -89,6 +89,13 @@ async def handle_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
+    # Solo user trying to mark expense as shared
+    if fields_to_update.get("compartida") == "Si" and len(couple_users) < 2:
+        await msg.reply_text(
+            "No podés marcar un gasto como compartido sin una pareja. Usá la opción Invitar en la página web."
+        )
+        return
+
     if "quien_pago" in fields_to_update:
         payer_name = fields_to_update["quien_pago"]
         payer_user = next((u for u in couple_users if u["display_name"] == payer_name), None)

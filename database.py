@@ -187,6 +187,28 @@ def create_couple(invite_code: str | None = None) -> int:
     return couple_id
 
 
+def get_couple_by_id(couple_id: int) -> dict | None:
+    sql = "SELECT id, invite_code, created_at FROM couples WHERE id = %s"
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (couple_id,))
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def delete_couple_if_empty(couple_id: int) -> bool:
+    sql = "SELECT COUNT(*) FROM users WHERE couple_id = %s"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (couple_id,))
+            count = cur.fetchone()[0]
+            if count > 0:
+                return False
+            cur.execute("DELETE FROM couples WHERE id = %s", (couple_id,))
+        conn.commit()
+    return True
+
+
 def create_user(
     email: str,
     password_hash: str,
