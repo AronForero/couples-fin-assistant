@@ -26,8 +26,7 @@ _EDIT_CONFIRM_TEMPLATE = (
     "📝 Concepto: {concepto}\n"
     "💰 Valor: ${valor:,}\n"
     "🤝 Compartida: {compartida}\n"
-    "💸 Valor a pagar: ${valor_a_pagar:,.0f}\n"
-    "📌 Observación: {observacion}"
+    "💸 Valor a pagar: ${valor_a_pagar:,.0f}"
 )
 
 _FIELD_LABELS = {
@@ -112,7 +111,6 @@ async def handle_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if splits and users_dict:
             merged = finance.compute_split(merged, splits, users_dict)
             fields_to_update["valor_a_pagar"] = merged["valor_a_pagar"]
-            fields_to_update["observacion"] = merged["observacion"]
             if "debt_user_id" in merged:
                 fields_to_update["debt_user_id"] = merged["debt_user_id"]
 

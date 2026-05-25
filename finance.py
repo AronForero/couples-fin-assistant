@@ -6,7 +6,7 @@ def compute_split(
     splits: dict[int, float],
     users: dict[int, str],
 ) -> dict:
-    """Compute valor_a_pagar and observacion for an expense.
+    """Compute valor_a_pagar and debt_user_id for an expense.
 
     Args:
         expense: dict with at least quien_pago_id, valor, compartida
@@ -21,11 +21,9 @@ def compute_split(
 
     if expense["compartida"] == "Si":
         expense["valor_a_pagar"] = round(valor * splits[partner_id], 2)
-        expense["observacion"] = f"{users[partner_id]} Debe"
         expense["debt_user_id"] = partner_id
     else:
         expense["valor_a_pagar"] = valor
-        expense["observacion"] = f"{users[payer_id]} Debe"
         expense["debt_user_id"] = payer_id
 
     return expense

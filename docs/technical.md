@@ -1,4 +1,4 @@
-# Technical Documentation — A&M Finances Bot
+# Technical Documentation — FinDuo
 
 ## Architecture Overview
 
@@ -44,7 +44,7 @@ External services called at runtime:
 ## Project Structure
 
 ```
-finbot/
+finduo/
 ├── bot.py                  # Telegram entry point — handler registration + run_polling()
 ├── api.py                  # FastAPI entry point — REST API with JWT auth
 ├── api_auth.py             # JWT create/verify, get_current_user() dependency
@@ -175,7 +175,7 @@ Fallback only — called by `handle_balance()` if `classify_intent` didn't retur
 
 ### `chat_reply(message, sender) → str`
 
-Called when `intent == "chat"` and the message is not a simple greeting. Uses a Spanish system prompt (FinBot personality, 2-3 sentences max, redirects to finance features). Returns freeform text.
+Called when `intent == "chat"` and the message is not a simple greeting. Uses a Spanish system prompt (FinDuo personality, 2-3 sentences max, redirects to finance features). Returns freeform text.
 
 ### `parse_edit(text, sender_name, date_str) → dict | None`
 
@@ -209,14 +209,14 @@ Hybrid approach for conversational messages:
 CREATE TABLE IF NOT EXISTS expenses (
     id            SERIAL PRIMARY KEY,
     fecha         DATE         NOT NULL,   -- YYYY-MM-DD
-    quien_pago    VARCHAR(3)   NOT NULL,   -- 'Aru' | 'Mon'
     subcategoria  TEXT,
     categoria     TEXT,
     concepto      TEXT         NOT NULL,
     valor         INTEGER      NOT NULL,   -- COP, integer
     compartida    VARCHAR(2)   NOT NULL,   -- 'Si' | 'No'
     valor_a_pagar NUMERIC(12,2),          -- amount owed (shared: other's share; personal: full amount)
-    observacion   TEXT,                    -- 'Aru Debe' | 'Mon Debe' (only meaningful for shared)
+    quien_pago_id INTEGER      REFERENCES users(id),  -- FK to payer
+    debt_user_id  INTEGER      REFERENCES users(id),  -- FK to debtor
     created_at    TIMESTAMPTZ  DEFAULT NOW()
 );
 ```
@@ -258,12 +258,12 @@ INSERT INTO settings (key, value) VALUES ('split_mon', '0.37') ON CONFLICT DO NO
 
 ### `compute_split(expense, split_aru, split_mon) → dict`
 
-Adds `valor_a_pagar` and `observacion` to an expense dict.
+Adds `valor_a_pagar` and `debt_user_id` to an expense dict.
 
 Split direction:
-- If **Aru** paid a shared expense → Mon owes `valor × split_mon`; `observacion = "Mon Debe"`
-- If **Mon** paid a shared expense → Aru owes `valor × split_aru`; `observacion = "Aru Debe"`
-- If **not shared** → full amount stays with payer; `observacion = "{payer} Debe"` (informational only, not used in balance debt calculation)
+- If **Aru** paid a shared expense → Mon owes `valor × split_mon`; `debt_user_id = partner_id`
+- If **Mon** paid a shared expense → Aru owes `valor × split_aru`; `debt_user_id = partner_id`
+- If **not shared** → full amount stays with payer; `debt_user_id = payer_id` (informational only)
 
 ### `compute_balance(expenses, viewer) → dict`
 
@@ -282,8 +282,8 @@ Aggregates expenses into two sections: **shared** (debt calculation) and **perso
         "aron_gasto": 100000,          # what Aru paid for shared expenses
         "mon_gasto": 60000,            # what Mon paid for shared expenses
         "gastos_totales": 160000,
-        "aron_debe": 22200.0,          # sum of valor_a_pagar where observacion == "Aru Debe"
-        "mon_debe": 59200.0,           # sum of valor_a_pagar where observacion == "Mon Debe"
+        "deudas_por_usuario": {1: 0, 2: 37000},  # user_id -> debt amount
+        
         "balance_key": "Mon debe a Aron",
         "deuda_total": 37000.0,        # abs(aron_debe - mon_debe)
         "por_categoria": {"ALIMENTACIÓN": 90000, "ENTRETENIMIENTO": 70000, ...}
@@ -348,7 +348,7 @@ Token details: HS256 algorithm, 30-day expiry, secret from `JWT_SECRET` env var.
 handle_expense()
   → llm.parse_expense()          # extracts: fecha, quien_pago, concepto, valor, compartida, categoria, subcategoria
   → database.get_split()         # reads current Aru/Mon percentages from settings table
-  → finance.compute_split()      # adds: valor_a_pagar, observacion
+  → finance.compute_split()      # adds: valor_a_pagar, debt_user_id
   → database.insert_expense()    # saves to expenses table
   → send confirmation to both ALLOWED_USER_IDS
 ```
@@ -414,7 +414,7 @@ Default limit: 5. Max: 20. User can specify: "últimos 10 gastos" or `/last 15`.
         → database.get_expense_by_id(42) → existing expense
         → merge: overwrite only mentioned fields
         → if valor/compartida/quien_pago changed:
-            → finance.compute_split() → recompute valor_a_pagar, observacion
+            → finance.compute_split() → recompute valor_a_pagar, debt_user_id
         → database.update_expense(42, fields)
         → send updated confirmation to both ALLOWED_USER_IDS
 ```
@@ -484,8 +484,8 @@ Both `bot` and `api` use the same Dockerfile. The `api` service overrides `CMD` 
 | `LLM_MODEL` | No | `openai/gpt-4.1` | Swap provider/model without code change |
 | `POSTGRES_HOST` | No | `localhost` | Use `db` in Docker Compose |
 | `POSTGRES_PORT` | No | `5432` | |
-| `POSTGRES_DB` | No | `finbot` | |
-| `POSTGRES_USER` | No | `finbot` | |
+| `POSTGRES_DB` | No | `finduo` | |
+| `POSTGRES_USER` | No | `finduo` | |
 | `POSTGRES_PASSWORD` | Yes | — | |
 | `JWT_SECRET` | Yes | `change-me` | Secret for signing JWT tokens — change in production |
 | `API_PORT` | No | `8000` | Port for the FastAPI container |
@@ -516,7 +516,7 @@ docker compose up
 ### VPS
 
 ```bash
-git clone <repo> finbot && cd finbot
+git clone <repo> finduo && cd finduo
 cp .env.example .env && nano .env
 docker compose up -d
 ```

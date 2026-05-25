@@ -31,7 +31,6 @@ class ExpenseResponse(BaseModel):
     valor: int
     compartida: str
     valor_a_pagar: float | None = None
-    observacion: str | None = None
 
 
 class PersonalBalance(BaseModel):

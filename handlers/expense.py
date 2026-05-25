@@ -21,8 +21,7 @@ _CONFIRM_TEMPLATE = (
     "📝 Concepto: {concepto}\n"
     "💰 Valor: ${valor:,}\n"
     "🤝 Compartida: {compartida}\n"
-    "💸 Valor a pagar: ${valor_a_pagar:,.0f}\n"
-    "📌 Observación: {observacion}"
+    "💸 Valor a pagar: ${valor_a_pagar:,.0f}"
 )
 
 
@@ -63,7 +62,6 @@ async def handle_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         expense = finance.compute_split(expense, splits, users_dict)
     else:
         expense.setdefault("valor_a_pagar", expense["valor"])
-        expense.setdefault("observacion", "")
 
     try:
         expense["id"] = database.insert_expense(expense)

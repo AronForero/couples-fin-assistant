@@ -91,7 +91,7 @@ Si el mensaje NO contiene un concepto y un valor numérico, devuelve exactamente
 
 def _build_chat_system(user1: str, user2: str) -> str:
     return f"""Eres un bot de finanzas personales para una pareja: {user1} y {user2}.
-Tu nombre es FinBot. Hablas en español de forma amigable, breve y con buena onda.
+Tu nombre es FinDuo. Hablas en español de forma amigable, breve y con buena onda.
 Si te preguntan qué puedes hacer, menciona que puedes registrar gastos, mostrar el balance mensual y cambiar el porcentaje de gastos compartidos.
 Si el usuario saluda, responde de forma cálida y breve.
 Si te hacen preguntas fuera de tema, responde brevemente y redirige amablemente a tus funciones de finanzas.
@@ -169,7 +169,7 @@ def _chat_text(system: str, user: str, max_tokens: int = 150) -> str:
 
 # ── Public functions ─────────────────────────────────────────────────────────
 
-def classify_intent(text: str, sender: str, date_str: str, user_names: tuple[str, str] = ("Aru", "Mon")) -> dict:
+def classify_intent(text: str, sender: str, date_str: str, user_names: tuple[str, str]) -> dict:
     """
     Returns {"intent": "balance"|"split_change"|"expense"|"chat"|"recent"|"edit"|"delete", "params": {...}}.
     Falls back to expense intent on any error.
@@ -188,7 +188,7 @@ def classify_intent(text: str, sender: str, date_str: str, user_names: tuple[str
         return {"intent": "expense", "params": {}}
 
 
-def parse_expense(text: str, sender_name: str, date_str: str, user_names: tuple[str, str] = ("Aru", "Mon")) -> dict | None:
+def parse_expense(text: str, sender_name: str, date_str: str, user_names: tuple[str, str]) -> dict | None:
     system = _build_expense_system(user_names[0], user_names[1], _CATEGORIES_TEXT)
     user_msg = f"Remitente: {sender_name}\nFecha del mensaje: {date_str}\nMensaje: {text}"
     parsed = _chat_json(system, user_msg)
@@ -213,14 +213,14 @@ Never add any explanation."""
     return int(data["year"]), int(data["month"])
 
 
-def chat_reply(message: str, sender: str, user_names: tuple[str, str] = ("Aru", "Mon")) -> str:
+def chat_reply(message: str, sender: str, user_names: tuple[str, str]) -> str:
     """Generate a conversational reply for non-expense messages."""
     system = _build_chat_system(user_names[0], user_names[1])
     user_msg = f"Remitente: {sender}\nMensaje: {message}"
     return _chat_text(system, user_msg)
 
 
-def parse_edit(text: str, sender_name: str, date_str: str, user_names: tuple[str, str] = ("Aru", "Mon")) -> dict | None:
+def parse_edit(text: str, sender_name: str, date_str: str, user_names: tuple[str, str]) -> dict | None:
     """Extract expense ID and fields to update from an edit message."""
     system = _build_edit_system(user_names[0], user_names[1], _CATEGORIES_TEXT)
     user_msg = f"Remitente: {sender_name}\nFecha del mensaje: {date_str}\nMensaje: {text}"

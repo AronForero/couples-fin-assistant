@@ -5,7 +5,7 @@ import database
 
 logger = logging.getLogger(__name__)
 
-_USAGE_MSG = "Uso: /link <email>\nEj: /link aru@finbot.local"
+_USAGE_MSG = "Uso: /link <email>\nEj: /link aru@finduo.local"
 _NOT_FOUND_MSG = "Email no registrado. Regístrate primero en el dashboard."
 _ALREADY_LINKED_MSG = "Ese email ya está vinculado a otra cuenta de Telegram."
 _SUCCESS_MSG = "✅ Cuenta vinculada. Ya puedes usar el bot."

@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="FinBot API", version="4.0.0")
+app = FastAPI(title="FinDuo API", version="4.0.0")
 
 origins = [o.strip() for o in API_CORS_ORIGINS.split(",")]
 app.add_middleware(
@@ -166,7 +166,6 @@ def list_expenses(
             "valor": e["valor"],
             "compartida": e["compartida"],
             "valor_a_pagar": float(e["valor_a_pagar"]) if e.get("valor_a_pagar") else None,
-            "observacion": e.get("observacion"),
         }
         for e in expenses
     ]
@@ -191,7 +190,6 @@ async def create_expense(
         data = finance.compute_split(data, splits, users_dict)
     else:
         data.setdefault("valor_a_pagar", data["valor"])
-        data.setdefault("observacion", "")
 
     row_id = database.insert_expense(data)
 
@@ -238,7 +236,6 @@ async def update_expense(
         if splits and users_dict:
             merged = finance.compute_split(merged, splits, users_dict)
             fields["valor_a_pagar"] = merged["valor_a_pagar"]
-            fields["observacion"] = merged["observacion"]
             if "debt_user_id" in merged:
                 fields["debt_user_id"] = merged["debt_user_id"]
 
@@ -271,7 +268,6 @@ async def update_expense(
         "valor": updated["valor"],
         "compartida": updated["compartida"],
         "valor_a_pagar": float(updated["valor_a_pagar"]) if updated.get("valor_a_pagar") else None,
-        "observacion": updated.get("observacion"),
     }
 
 

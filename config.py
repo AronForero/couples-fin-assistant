@@ -10,8 +10,8 @@ LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-4.1")
 
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
-POSTGRES_DB = os.getenv("POSTGRES_DB", "finbot")
-POSTGRES_USER = os.getenv("POSTGRES_USER", "finbot")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "finduo")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "finduo")
 POSTGRES_PASSWORD = os.environ["POSTGRES_PASSWORD"]
 
 # JWT settings for dashboard API

@@ -1,4 +1,4 @@
-# A&M Finances Bot — Claude Code Context
+# FinDuo — Claude Code Context
 
 This file helps Claude Code resume work on this project without re-reading every source file.
 
@@ -30,7 +30,7 @@ A personal finance Telegram bot for Aron (Aru) and Monica (Mon). Users send free
 ## Directory Map
 
 ```
-finbot/
+finduo/
 ├── bot.py                  # Entry point — Telegram app setup + run_polling()
 ├── config.py               # All env vars and business constants (ALLOWED_USER_IDS, USER_MAP, CATEGORIES, etc.)
 ├── database.py             # PostgreSQL: init, expenses CRUD, settings CRUD, get_split()
@@ -90,7 +90,7 @@ llm.classify_intent(text, sender, date_str)
 handle_expense()
   → llm.parse_expense()          # extracts: fecha, quien_pago, concepto, valor, compartida, categoria, subcategoria
   → database.get_split()         # reads current Aru/Mon percentages from settings table
-  → finance.compute_split()      # adds: valor_a_pagar, observacion
+  → finance.compute_split()      # adds: valor_a_pagar, debt_user_id
   → database.insert_expense()    # saves to expenses table
   → send confirmation to both ALLOWED_USER_IDS
 ```
@@ -137,7 +137,7 @@ USER_MAP = {"aron": "Aru", "monica": "Mon", "mónica": "Mon"}
 **`expenses`** — one row per registered expense:
 ```
 id, fecha, quien_pago, subcategoria, categoria, concepto,
-valor, compartida, valor_a_pagar, observacion, created_at
+valor, compartida, valor_a_pagar, quien_pago_id, debt_user_id, created_at
 ```
 
 **`settings`** — key/value store for runtime config:
@@ -160,8 +160,8 @@ Both tables are created idempotently in `database.init_db()`.
 | `LLM_MODEL` | No | `openai/gpt-4.1` | Model name — swap here to change provider/model |
 | `POSTGRES_HOST` | No | `localhost` | Use `db` inside Docker Compose |
 | `POSTGRES_PORT` | No | `5432` | |
-| `POSTGRES_DB` | No | `finbot` | |
-| `POSTGRES_USER` | No | `finbot` | |
+| `POSTGRES_DB` | No | `finduo` | |
+| `POSTGRES_USER` | No | `finduo` | |
 | `POSTGRES_PASSWORD` | Yes | — | |
 | `GOOGLE_SHEET_ID` | Yes (V2) | — | Spreadsheet ID from URL |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Yes (V2) | — | Path to service account JSON — use `/app/credentials/service_account.json` in Docker |

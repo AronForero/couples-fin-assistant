@@ -23,14 +23,14 @@ _CREATE_EXPENSES = """
 CREATE TABLE IF NOT EXISTS expenses (
     id            SERIAL PRIMARY KEY,
     fecha         DATE         NOT NULL,
-    quien_pago    VARCHAR(3)   NOT NULL,
     subcategoria  TEXT,
     categoria     TEXT,
     concepto      TEXT         NOT NULL,
     valor         INTEGER      NOT NULL,
     compartida    VARCHAR(2)   NOT NULL,
     valor_a_pagar NUMERIC(12,2),
-    observacion   TEXT,
+    quien_pago_id INTEGER      REFERENCES users(id),
+    debt_user_id  INTEGER      REFERENCES users(id),
     created_at    TIMESTAMPTZ  DEFAULT NOW()
 );
 """
@@ -64,23 +64,23 @@ CREATE TABLE IF NOT EXISTS couple_settings (
 );
 """
 
-_ADD_EXPENSE_COLUMNS = """
+_DROP_OLD_EXPENSE_COLUMNS = """
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_name='expenses' AND column_name='quien_pago_id') THEN
-        ALTER TABLE expenses ADD COLUMN quien_pago_id INTEGER REFERENCES users(id);
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name='expenses' AND column_name='quien_pago') THEN
+        ALTER TABLE expenses DROP COLUMN quien_pago;
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_name='expenses' AND column_name='debt_user_id') THEN
-        ALTER TABLE expenses ADD COLUMN debt_user_id INTEGER REFERENCES users(id);
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name='expenses' AND column_name='observacion') THEN
+        ALTER TABLE expenses DROP COLUMN observacion;
     END IF;
 END$$;
 """
 
 _CSV_COLUMNS = [
-    "id", "fecha", "quien_pago", "subcategoria", "categoria",
-    "concepto", "valor", "compartida", "valor_a_pagar", "observacion",
+    "id", "fecha", "subcategoria", "categoria",
+    "concepto", "valor", "compartida", "valor_a_pagar",
 ]
 
 # ── Connection ────────────────────────────────────────────────────────────────
@@ -114,14 +114,14 @@ def _seed_default_couple(cur) -> tuple[int, int, int] | None:
     cur.execute(
         """INSERT INTO users (email, password_hash, display_name, couple_id, chat_id)
            VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-        ("aru@finbot.local", "!", "Aru", couple_id, 247795192),
+        ("aru@finduo.local", "!", "Aru", couple_id, 247795192),
     )
     aru_id = cur.fetchone()[0]
 
     cur.execute(
         """INSERT INTO users (email, password_hash, display_name, couple_id, chat_id)
            VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-        ("mon@finbot.local", "!", "Mon", couple_id, 1560352087),
+        ("mon@finduo.local", "!", "Mon", couple_id, 1560352087),
     )
     mon_id = cur.fetchone()[0]
 
@@ -137,38 +137,16 @@ def _seed_default_couple(cur) -> tuple[int, int, int] | None:
     return (couple_id, aru_id, mon_id)
 
 
-def _migrate_expenses(cur, aru_id: int, mon_id: int):
-    """Set quien_pago_id and debt_user_id on existing expenses."""
-    cur.execute(
-        """UPDATE expenses SET quien_pago_id = %s WHERE quien_pago = 'Aru' AND quien_pago_id IS NULL""",
-        (aru_id,),
-    )
-    cur.execute(
-        """UPDATE expenses SET quien_pago_id = %s WHERE quien_pago = 'Mon' AND quien_pago_id IS NULL""",
-        (mon_id,),
-    )
-    cur.execute(
-        """UPDATE expenses SET debt_user_id = %s WHERE observacion LIKE '%%Aru Debe%%' AND debt_user_id IS NULL""",
-        (aru_id,),
-    )
-    cur.execute(
-        """UPDATE expenses SET debt_user_id = %s WHERE observacion LIKE '%%Mon Debe%%' AND debt_user_id IS NULL""",
-        (mon_id,),
-    )
-
-
 def init_db():
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_CREATE_EXPENSES)
             cur.execute(_CREATE_COUPLES)
             cur.execute(_CREATE_USERS)
+            cur.execute(_CREATE_EXPENSES)
             cur.execute(_CREATE_COUPLE_SETTINGS)
-            cur.execute(_ADD_EXPENSE_COLUMNS)
+            cur.execute(_DROP_OLD_EXPENSE_COLUMNS)
 
-            ids = _seed_default_couple(cur)
-            if ids:
-                _migrate_expenses(cur, ids[1], ids[2])
+            _seed_default_couple(cur)
         conn.commit()
     logger.info("Database initialised")
 
@@ -352,12 +330,12 @@ def update_split_for_couple(couple_id: int, splits: dict[int, float]) -> None:
 def insert_expense(expense: dict) -> int:
     sql = """
         INSERT INTO expenses
-            (fecha, quien_pago, subcategoria, categoria, concepto,
-             valor, compartida, valor_a_pagar, observacion,
+            (fecha, subcategoria, categoria, concepto,
+             valor, compartida, valor_a_pagar,
              quien_pago_id, debt_user_id)
         VALUES
-            (%(fecha)s, %(quien_pago)s, %(subcategoria)s, %(categoria)s, %(concepto)s,
-             %(valor)s, %(compartida)s, %(valor_a_pagar)s, %(observacion)s,
+            (%(fecha)s, %(subcategoria)s, %(categoria)s, %(concepto)s,
+             %(valor)s, %(compartida)s, %(valor_a_pagar)s,
              %(quien_pago_id)s, %(debt_user_id)s)
         RETURNING id
     """
@@ -373,13 +351,14 @@ def insert_expense(expense: dict) -> int:
 
 def get_expenses_by_month(year: int, month: int) -> list[dict]:
     sql = """
-        SELECT id, fecha, quien_pago, subcategoria, categoria,
-               concepto, valor, compartida, valor_a_pagar, observacion,
-               quien_pago_id, debt_user_id
-        FROM expenses
-        WHERE EXTRACT(YEAR  FROM fecha) = %s
-          AND EXTRACT(MONTH FROM fecha) = %s
-        ORDER BY fecha, id
+        SELECT e.id, e.fecha, u.display_name AS quien_pago, e.subcategoria, e.categoria,
+               e.concepto, e.valor, e.compartida, e.valor_a_pagar,
+               e.quien_pago_id, e.debt_user_id
+        FROM expenses e
+        LEFT JOIN users u ON u.id = e.quien_pago_id
+        WHERE EXTRACT(YEAR  FROM e.fecha) = %s
+          AND EXTRACT(MONTH FROM e.fecha) = %s
+        ORDER BY e.fecha, e.id
     """
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -389,14 +368,15 @@ def get_expenses_by_month(year: int, month: int) -> list[dict]:
 
 def get_expenses_by_month_and_users(year: int, month: int, user_ids: list[int]) -> list[dict]:
     sql = """
-        SELECT id, fecha, quien_pago, subcategoria, categoria,
-               concepto, valor, compartida, valor_a_pagar, observacion,
-               quien_pago_id, debt_user_id
-        FROM expenses
-        WHERE EXTRACT(YEAR  FROM fecha) = %s
-          AND EXTRACT(MONTH FROM fecha) = %s
-          AND quien_pago_id = ANY(%s)
-        ORDER BY fecha, id
+        SELECT e.id, e.fecha, u.display_name AS quien_pago, e.subcategoria, e.categoria,
+               e.concepto, e.valor, e.compartida, e.valor_a_pagar,
+               e.quien_pago_id, e.debt_user_id
+        FROM expenses e
+        LEFT JOIN users u ON u.id = e.quien_pago_id
+        WHERE EXTRACT(YEAR  FROM e.fecha) = %s
+          AND EXTRACT(MONTH FROM e.fecha) = %s
+          AND e.quien_pago_id = ANY(%s)
+        ORDER BY e.fecha, e.id
     """
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -406,11 +386,12 @@ def get_expenses_by_month_and_users(year: int, month: int, user_ids: list[int]) 
 
 def get_expense_by_id(expense_id: int) -> dict | None:
     sql = """
-        SELECT id, fecha, quien_pago, subcategoria, categoria,
-               concepto, valor, compartida, valor_a_pagar, observacion,
-               quien_pago_id, debt_user_id
-        FROM expenses
-        WHERE id = %s
+        SELECT e.id, e.fecha, u.display_name AS quien_pago, e.subcategoria, e.categoria,
+               e.concepto, e.valor, e.compartida, e.valor_a_pagar,
+               e.quien_pago_id, e.debt_user_id
+        FROM expenses e
+        LEFT JOIN users u ON u.id = e.quien_pago_id
+        WHERE e.id = %s
     """
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -445,11 +426,12 @@ def delete_expense(expense_id: int) -> bool:
 
 def get_recent_expenses(limit: int = 5) -> list[dict]:
     sql = """
-        SELECT id, fecha, quien_pago, subcategoria, categoria,
-               concepto, valor, compartida, valor_a_pagar, observacion,
-               quien_pago_id, debt_user_id
-        FROM expenses
-        ORDER BY id DESC
+        SELECT e.id, e.fecha, u.display_name AS quien_pago, e.subcategoria, e.categoria,
+               e.concepto, e.valor, e.compartida, e.valor_a_pagar,
+               e.quien_pago_id, e.debt_user_id
+        FROM expenses e
+        LEFT JOIN users u ON u.id = e.quien_pago_id
+        ORDER BY e.id DESC
         LIMIT %s
     """
     with get_conn() as conn:

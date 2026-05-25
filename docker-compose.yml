@@ -2,15 +2,15 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-finbot}
-      POSTGRES_USER: ${POSTGRES_USER:-finbot}
+      POSTGRES_DB: ${POSTGRES_DB:-finduo}
+      POSTGRES_USER: ${POSTGRES_USER:-finduo}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finbot} -d ${POSTGRES_DB:-finbot}" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finduo} -d ${POSTGRES_DB:-finduo}" ]
       interval: 5s
       timeout: 5s
       retries: 10

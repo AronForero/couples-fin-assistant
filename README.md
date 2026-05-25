@@ -1,4 +1,4 @@
-# A&M Finances Bot
+# FinDuo
 
 A personal finance Telegram bot for Aron (Aru) and Monica (Mon). Send expenses in plain text and get monthly balance summaries — no spreadsheets, no manual tracking.
 
@@ -127,7 +127,7 @@ All other users are silently ignored.
 ## Project Structure
 
 ```
-finbot/
+finduo/
 ├── bot.py                  # Entry point — Telegram app + polling
 ├── config.py               # Environment variables and constants
 ├── database.py             # PostgreSQL init, CRUD, CSV export
@@ -175,8 +175,8 @@ LLM_MODEL=openai/gpt-4.1
 
 POSTGRES_HOST=db
 POSTGRES_PORT=5432
-POSTGRES_DB=finbot
-POSTGRES_USER=finbot
+POSTGRES_DB=finduo
+POSTGRES_USER=finduo
 POSTGRES_PASSWORD=change_me_in_production
 ```
 
@@ -203,8 +203,8 @@ The bot starts polling immediately. No webhook or SSL certificate needed.
 
 ```bash
 # On your server
-git clone <repo-url> finbot
-cd finbot
+git clone <repo-url> finduo
+cd finduo
 cp .env.example .env
 # edit .env with your values
 docker compose up -d
@@ -224,8 +224,8 @@ Data is persisted in a named Docker volume (`postgres_data`) and survives contai
 | `LLM_MODEL` | Model name | `openai/gpt-4.1` |
 | `POSTGRES_HOST` | Database host | `db` (Docker service name) |
 | `POSTGRES_PORT` | Database port | `5432` |
-| `POSTGRES_DB` | Database name | `finbot` |
-| `POSTGRES_USER` | Database user | `finbot` |
+| `POSTGRES_DB` | Database name | `finduo` |
+| `POSTGRES_USER` | Database user | `finduo` |
 | `POSTGRES_PASSWORD` | Database password | — |
 | `GOOGLE_SHEET_ID` | Target spreadsheet ID (V2) | — |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Path to service account JSON (V2) | `/app/credentials/service_account.json` |
@@ -238,14 +238,14 @@ Data is persisted in a named Docker volume (`postgres_data`) and survives contai
 CREATE TABLE expenses (
     id            SERIAL PRIMARY KEY,
     fecha         DATE         NOT NULL,
-    quien_pago    VARCHAR(3)   NOT NULL,   -- 'Aru' | 'Mon'
     subcategoria  TEXT,
     categoria     TEXT,
     concepto      TEXT         NOT NULL,
     valor         INTEGER      NOT NULL,
     compartida    VARCHAR(2)   NOT NULL,   -- 'Si' | 'No'
     valor_a_pagar NUMERIC(12,2),
-    observacion   TEXT,                    -- 'Aru Debe' | 'Mon Debe'
+    quien_pago_id INTEGER      REFERENCES users(id),
+    debt_user_id  INTEGER      REFERENCES users(id),
     created_at    TIMESTAMPTZ  DEFAULT NOW()
 );
 ```
