@@ -21,11 +21,16 @@ async def apply_split(
     if not user:
         return
 
+    # Solo user guard
+    if not user.get("couple_id"):
+        await msg.reply_text("No tenés pareja. Creá una desde la web para configurar el split.")
+        return
+
     if abs(pct_user1 + pct_user2 - 100) > 0.1:
         await msg.reply_text(_SUM_ERROR_MSG)
         return
 
-    couple_users = database.get_couple_users(user["couple_id"]) if user.get("couple_id") else []
+    couple_users = database.get_couple_users(user["couple_id"])
     if len(couple_users) != 2:
         await msg.reply_text("No se pudo determinar la pareja.")
         return

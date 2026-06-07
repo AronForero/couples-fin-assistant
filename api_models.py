@@ -98,6 +98,15 @@ class CoupleMember(BaseModel):
     email: str
 
 
+class CoupleHistory(BaseModel):
+    couple_id: int
+    partner_name: str
+    joined_at: str
+    left_at: str | None  # None = still active
+    total_spent: int
+    is_active: bool
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

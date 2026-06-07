@@ -31,11 +31,18 @@ async def handle_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not user:
         return
 
+    # Solo user guard
+    if not user.get("couple_id"):
+        await msg.reply_text(
+            "No tenés pareja. Creá una desde la web para registrar gastos compartidos."
+        )
+        return
+
     text = msg.text or ""
     date_str = msg.date.strftime("%Y-%m-%d")
     sender = user["display_name"]
 
-    couple_users = database.get_couple_users(user["couple_id"]) if user.get("couple_id") else []
+    couple_users = database.get_couple_users(user["couple_id"])
     user_names = tuple(u["display_name"] for u in couple_users) if len(couple_users) == 2 else ("Usuario1", "Usuario2")
 
     expense = llm.parse_expense(text, sender, date_str, user_names)
@@ -55,7 +62,10 @@ async def handle_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if payer_user:
         expense["quien_pago_id"] = payer_user["id"]
 
-    splits = database.get_split_for_couple(user["couple_id"]) if user.get("couple_id") else {}
+    # Add couple_id to expense
+    expense["couple_id"] = user["couple_id"]
+
+    splits = database.get_split_for_couple(user["couple_id"])
     users_dict = {u["id"]: u["display_name"] for u in couple_users}
 
     if splits and users_dict:

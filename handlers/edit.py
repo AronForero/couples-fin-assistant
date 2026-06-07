@@ -62,11 +62,16 @@ async def handle_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not user:
         return
 
+    # Solo user guard
+    if not user.get("couple_id"):
+        await msg.reply_text("No tenés pareja. Creá una desde la web.")
+        return
+
     text = msg.text or ""
     date_str = msg.date.strftime("%Y-%m-%d")
     sender = user["display_name"]
 
-    couple_users = database.get_couple_users(user["couple_id"]) if user.get("couple_id") else []
+    couple_users = database.get_couple_users(user["couple_id"])
     user_names = tuple(u["display_name"] for u in couple_users) if len(couple_users) == 2 else ("Usuario1", "Usuario2")
 
     edit_data = llm.parse_edit(text, sender, date_str, user_names)
@@ -78,6 +83,11 @@ async def handle_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     existing = database.get_expense_by_id(expense_id)
     if existing is None:
         await msg.reply_text(f"Gasto #{expense_id} no encontrado.")
+        return
+
+    # Verify expense belongs to user's active couple
+    if existing.get("couple_id") != user.get("couple_id"):
+        await msg.reply_text("Este gasto no pertenece a tu pareja actual.")
         return
 
     fields_to_update = {k: v for k, v in edit_data.items() if k in _EDITABLE_FIELDS and k != "id"}
@@ -106,7 +116,7 @@ async def handle_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     needs_split_recompute = {"valor", "compartida", "quien_pago"} & set(fields_to_update.keys())
     if needs_split_recompute:
-        splits = database.get_split_for_couple(user["couple_id"]) if user.get("couple_id") else {}
+        splits = database.get_split_for_couple(user["couple_id"])
         users_dict = {u["id"]: u["display_name"] for u in couple_users}
         if splits and users_dict:
             merged = finance.compute_split(merged, splits, users_dict)

@@ -29,8 +29,9 @@ CREATE TABLE IF NOT EXISTS expenses (
     valor         INTEGER      NOT NULL,
     compartida    VARCHAR(2)   NOT NULL,
     valor_a_pagar NUMERIC(12,2),
-    quien_pago_id INTEGER      REFERENCES users(id),
-    debt_user_id  INTEGER      REFERENCES users(id),
+    quien_pago_id INTEGER,
+    debt_user_id  INTEGER,
+    couple_id     INTEGER      REFERENCES couples(id),
     created_at    TIMESTAMPTZ  DEFAULT NOW()
 );
 """
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS couple_settings (
     couple_id        INTEGER NOT NULL REFERENCES couples(id),
     user_id          INTEGER NOT NULL REFERENCES users(id),
     split_percentage NUMERIC(5,4) NOT NULL,
+    left_at          TIMESTAMPTZ NULL,
     PRIMARY KEY (couple_id, user_id)
 );
 """
@@ -74,6 +76,26 @@ BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.columns
                WHERE table_name='expenses' AND column_name='observacion') THEN
         ALTER TABLE expenses DROP COLUMN observacion;
+    END IF;
+END$$;
+"""
+
+_ADD_COUPLE_ID_TO_EXPENSES = """
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='expenses' AND column_name='couple_id') THEN
+        ALTER TABLE expenses ADD COLUMN couple_id INTEGER REFERENCES couples(id);
+    END IF;
+END$$;
+"""
+
+_ADD_LEFT_AT_TO_COUPLE_SETTINGS = """
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='couple_settings' AND column_name='left_at') THEN
+        ALTER TABLE couple_settings ADD COLUMN left_at TIMESTAMPTZ NULL;
     END IF;
 END$$;
 """
@@ -140,10 +162,17 @@ def _seed_default_couple(cur) -> tuple[int, int, int] | None:
 def init_db():
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # 1. couples — no deps
             cur.execute(_CREATE_COUPLES)
+            # 2. users — depends on couples
             cur.execute(_CREATE_USERS)
-            cur.execute(_CREATE_EXPENSES)
+            # 3. couple_settings — depends on couples + users
             cur.execute(_CREATE_COUPLE_SETTINGS)
+            # 4. expenses — depends on couples (via couple_id)
+            cur.execute(_CREATE_EXPENSES)
+            # 5. migrations
+            cur.execute(_ADD_COUPLE_ID_TO_EXPENSES)
+            cur.execute(_ADD_LEFT_AT_TO_COUPLE_SETTINGS)
             cur.execute(_DROP_OLD_EXPENSE_COLUMNS)
 
             _seed_default_couple(cur)
@@ -169,22 +198,18 @@ def get_couple_by_id(couple_id: int) -> dict | None:
     sql = "SELECT id, invite_code, created_at FROM couples WHERE id = %s"
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Verify couple has at least one active user
+            cur.execute(
+                "SELECT COUNT(*) FROM couple_settings WHERE couple_id = %s AND left_at IS NULL",
+                (couple_id,),
+            )
+            has_active = cur.fetchone()[0] > 0
+            if not has_active:
+                return None
+
             cur.execute(sql, (couple_id,))
             row = cur.fetchone()
     return dict(row) if row else None
-
-
-def delete_couple_if_empty(couple_id: int) -> bool:
-    sql = "SELECT COUNT(*) FROM users WHERE couple_id = %s"
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, (couple_id,))
-            count = cur.fetchone()[0]
-            if count > 0:
-                return False
-            cur.execute("DELETE FROM couples WHERE id = %s", (couple_id,))
-        conn.commit()
-    return True
 
 
 def create_user(
@@ -217,8 +242,105 @@ def join_couple(user_id: int, invite_code: str) -> bool:
                 return False
             couple_id = row[0]
             cur.execute("UPDATE users SET couple_id = %s WHERE id = %s", (couple_id, user_id))
+            # Add user to couple_settings with default split
+            cur.execute(
+                """INSERT INTO couple_settings (couple_id, user_id, split_percentage)
+                   VALUES (%s, %s, 0.50)
+                   ON CONFLICT (couple_id, user_id) DO NOTHING""",
+                (couple_id, user_id),
+            )
         conn.commit()
     return True
+
+
+def leave_couple(user_id: int) -> bool:
+    """User leaves their current couple. Both users are marked as left — couple becomes historical immediately."""
+    user = get_user_by_id(user_id)
+    if not user or not user.get("couple_id"):
+        return False
+
+    couple_id = user["couple_id"]
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # 1. Get partner (before we modify anything)
+            cur.execute(
+                "SELECT user_id FROM couple_settings WHERE couple_id = %s AND user_id != %s",
+                (couple_id, user_id),
+            )
+            partner_row = cur.fetchone()
+
+            # 2. Mark current user as left
+            cur.execute(
+                """UPDATE couple_settings
+                   SET left_at = NOW()
+                   WHERE couple_id = %s AND user_id = %s""",
+                (couple_id, user_id),
+            )
+
+            # 3. Remove couple_id from current user
+            cur.execute(
+                "UPDATE users SET couple_id = NULL WHERE id = %s",
+                (user_id,),
+            )
+
+            # 4. If partner exists, also mark them as left and remove their couple_id
+            if partner_row:
+                partner_id = partner_row[0]
+                cur.execute(
+                    """UPDATE couple_settings
+                       SET left_at = NOW()
+                       WHERE couple_id = %s AND user_id = %s""",
+                    (couple_id, partner_id),
+                )
+                cur.execute(
+                    "UPDATE users SET couple_id = NULL WHERE id = %s",
+                    (partner_id,),
+                )
+
+        conn.commit()
+    return True
+
+
+def get_user_couples(user_id: int) -> list[dict]:
+    """Returns all couples a user has been in (active + historical)."""
+    sql = """
+        SELECT
+            c.id AS couple_id,
+            partner.display_name AS partner_name,
+            c.created_at AS joined_at,
+            cs_user.left_at,
+            CASE WHEN cs_user.left_at IS NULL THEN true ELSE false END AS is_active,
+            COALESCE(SUM(e.valor), 0)::int AS total_spent
+        FROM couples c
+        JOIN couple_settings cs_user ON cs_user.couple_id = c.id AND cs_user.user_id = %s
+        JOIN couple_settings cs_partner ON cs_partner.couple_id = c.id AND cs_partner.user_id != %s
+        JOIN users partner ON partner.id = cs_partner.user_id
+        LEFT JOIN expenses e ON e.couple_id = c.id
+        GROUP BY c.id, partner.display_name, c.created_at, cs_user.left_at
+        ORDER BY c.created_at DESC
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (user_id, user_id))
+            return [dict(row) for row in cur.fetchall()]
+
+
+def get_couple_expenses(couple_id: int) -> list[dict]:
+    """Returns all expenses for a specific couple (historical or active)."""
+    sql = """
+        SELECT e.id, e.fecha, u.display_name AS quien_pago, e.subcategoria, e.categoria,
+               e.concepto, e.valor, e.compartida, e.valor_a_pagar,
+               e.quien_pago_id, e.debt_user_id, e.couple_id
+        FROM expenses e
+        LEFT JOIN users u ON u.id = e.quien_pago_id
+        WHERE e.couple_id = %s
+        ORDER BY e.fecha, e.id
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (couple_id,))
+            return [dict(row) for row in cur.fetchall()]
 
 
 def get_user_by_id(user_id: int) -> dict | None:
@@ -332,15 +454,16 @@ def insert_expense(expense: dict) -> int:
         INSERT INTO expenses
             (fecha, subcategoria, categoria, concepto,
              valor, compartida, valor_a_pagar,
-             quien_pago_id, debt_user_id)
+             quien_pago_id, debt_user_id, couple_id)
         VALUES
             (%(fecha)s, %(subcategoria)s, %(categoria)s, %(concepto)s,
              %(valor)s, %(compartida)s, %(valor_a_pagar)s,
-             %(quien_pago_id)s, %(debt_user_id)s)
+             %(quien_pago_id)s, %(debt_user_id)s, %(couple_id)s)
         RETURNING id
     """
     expense.setdefault("quien_pago_id", None)
     expense.setdefault("debt_user_id", None)
+    # couple_id is required — do not default to None
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, expense)
@@ -349,38 +472,40 @@ def insert_expense(expense: dict) -> int:
     return row_id
 
 
-def get_expenses_by_month(year: int, month: int) -> list[dict]:
+def get_expenses_by_month(year: int, month: int, couple_id: int) -> list[dict]:
     sql = """
         SELECT e.id, e.fecha, u.display_name AS quien_pago, e.subcategoria, e.categoria,
                e.concepto, e.valor, e.compartida, e.valor_a_pagar,
-               e.quien_pago_id, e.debt_user_id
+               e.quien_pago_id, e.debt_user_id, e.couple_id
         FROM expenses e
         LEFT JOIN users u ON u.id = e.quien_pago_id
         WHERE EXTRACT(YEAR  FROM e.fecha) = %s
           AND EXTRACT(MONTH FROM e.fecha) = %s
+          AND e.couple_id = %s
         ORDER BY e.fecha, e.id
     """
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, (year, month))
+            cur.execute(sql, (year, month, couple_id))
             return [dict(row) for row in cur.fetchall()]
 
 
-def get_expenses_by_month_and_users(year: int, month: int, user_ids: list[int]) -> list[dict]:
+def get_expenses_by_month_and_users(year: int, month: int, user_ids: list[int], couple_id: int) -> list[dict]:
     sql = """
         SELECT e.id, e.fecha, u.display_name AS quien_pago, e.subcategoria, e.categoria,
                e.concepto, e.valor, e.compartida, e.valor_a_pagar,
-               e.quien_pago_id, e.debt_user_id
+               e.quien_pago_id, e.debt_user_id, e.couple_id
         FROM expenses e
         LEFT JOIN users u ON u.id = e.quien_pago_id
         WHERE EXTRACT(YEAR  FROM e.fecha) = %s
           AND EXTRACT(MONTH FROM e.fecha) = %s
           AND e.quien_pago_id = ANY(%s)
+          AND e.couple_id = %s
         ORDER BY e.fecha, e.id
     """
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, (year, month, user_ids))
+            cur.execute(sql, (year, month, user_ids, couple_id))
             return [dict(row) for row in cur.fetchall()]
 
 
@@ -388,7 +513,7 @@ def get_expense_by_id(expense_id: int) -> dict | None:
     sql = """
         SELECT e.id, e.fecha, u.display_name AS quien_pago, e.subcategoria, e.categoria,
                e.concepto, e.valor, e.compartida, e.valor_a_pagar,
-               e.quien_pago_id, e.debt_user_id
+               e.quien_pago_id, e.debt_user_id, e.couple_id
         FROM expenses e
         LEFT JOIN users u ON u.id = e.quien_pago_id
         WHERE e.id = %s
@@ -424,17 +549,18 @@ def delete_expense(expense_id: int) -> bool:
     return deleted
 
 
-def get_recent_expenses(limit: int = 5) -> list[dict]:
+def get_recent_expenses(limit: int, couple_id: int) -> list[dict]:
     sql = """
         SELECT e.id, e.fecha, u.display_name AS quien_pago, e.subcategoria, e.categoria,
                e.concepto, e.valor, e.compartida, e.valor_a_pagar,
-               e.quien_pago_id, e.debt_user_id
+               e.quien_pago_id, e.debt_user_id, e.couple_id
         FROM expenses e
         LEFT JOIN users u ON u.id = e.quien_pago_id
+        WHERE e.couple_id = %s
         ORDER BY e.id DESC
         LIMIT %s
     """
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, (limit,))
+            cur.execute(sql, (couple_id, limit))
             return [dict(row) for row in cur.fetchall()]

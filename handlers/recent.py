@@ -45,11 +45,18 @@ async def handle_recent(update: Update, context: ContextTypes.DEFAULT_TYPE, limi
     if not user:
         return
 
+    # Solo user guard
+    if not user.get("couple_id"):
+        await msg.reply_text(
+            "No tenés pareja. Creá una desde la web para ver gastos recientes."
+        )
+        return
+
     if limit is None:
         limit = _DEFAULT_LIMIT
     limit = max(1, min(limit, _MAX_LIMIT))
 
-    expenses = database.get_recent_expenses(limit)
+    expenses = database.get_recent_expenses(limit, user["couple_id"])
     if not expenses:
         await msg.reply_text("No hay gastos registrados.")
         return

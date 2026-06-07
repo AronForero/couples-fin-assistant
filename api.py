@@ -106,21 +106,13 @@ def join_couple(
     body: api_models.JoinRequest,
     user: dict = Depends(api_auth.get_current_user),
 ):
-    # Check if user already has a full couple (2 members)
+    # If user is already in a couple, leave it first
     if user.get("couple_id"):
-        members = database.get_couple_users(user["couple_id"])
-        if len(members) >= 2:
-            raise HTTPException(status_code=400, detail="Ya perteneces a una pareja completa")
-
-    old_couple_id = user.get("couple_id")
+        database.leave_couple(user["id"])
 
     success = database.join_couple(user["id"], body.invite_code)
     if not success:
         raise HTTPException(status_code=404, detail="Código de invitación inválido")
-
-    # Clean up old couple if empty
-    if old_couple_id:
-        database.delete_couple_if_empty(old_couple_id)
 
     updated = database.get_user_by_id(user["id"])
     couple = database.get_couple_by_id(updated["couple_id"]) if updated.get("couple_id") else None
@@ -144,6 +136,88 @@ def get_couple_members(user: dict = Depends(api_auth.get_current_user)):
     return [{"id": m["id"], "display_name": m["display_name"], "email": m["email"]} for m in members]
 
 
+# ── Couple Lifecycle Endpoints ────────────────────────────────────────────────
+
+@app.post("/api/couple/leave", response_model=api_models.UserResponse)
+async def leave_couple_endpoint(user: dict = Depends(api_auth.get_current_user)):
+    if not user.get("couple_id"):
+        raise HTTPException(status_code=400, detail="No estás en una pareja")
+
+    # Get partner before leaving (for notification)
+    partner = database.get_partner(user["id"])
+
+    # Leave couple — both users are marked as left immediately
+    success = database.leave_couple(user["id"])
+    if not success:
+        raise HTTPException(status_code=400, detail="No se pudo salir de la pareja")
+
+    # Notify partner via Telegram (if they have chat_id)
+    if partner and partner.get("chat_id"):
+        await _notify_telegram(
+            partner["chat_id"],
+            f"👋 {user['display_name']} ha dejado la pareja financiera.\n"
+            f"Ya no pueden compartir gastos. Podés invitar a otra persona desde la web."
+        )
+
+    # Return updated user
+    updated = database.get_user_by_id(user["id"])
+    return updated
+
+
+@app.get("/api/couples/history", response_model=list[api_models.CoupleHistory])
+def get_couple_history(user: dict = Depends(api_auth.get_current_user)):
+    couples = database.get_user_couples(user["id"])
+    return [
+        {
+            "couple_id": c["couple_id"],
+            "partner_name": c["partner_name"],
+            "joined_at": str(c["joined_at"]),
+            "left_at": str(c["left_at"]) if c.get("left_at") else None,
+            "total_spent": c["total_spent"],
+            "is_active": c["is_active"],
+        }
+        for c in couples
+    ]
+
+
+@app.get("/api/couples/{couple_id}/expenses", response_model=list[api_models.ExpenseResponse])
+def get_couple_expenses_endpoint(
+    couple_id: int,
+    year: int = Query(None),
+    month: int = Query(None),
+    user: dict = Depends(api_auth.get_current_user),
+):
+    # Verify user belongs (or belonged) to this couple
+    user_couples = database.get_user_couples(user["id"])
+    valid_ids = {c["couple_id"] for c in user_couples}
+    if couple_id not in valid_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta pareja")
+
+    expenses = database.get_couple_expenses(couple_id)
+
+    # Filter by year/month if provided
+    if year and month:
+        expenses = [
+            e for e in expenses
+            if e["fecha"].year == year and e["fecha"].month == month
+        ]
+
+    return [
+        {
+            "id": e["id"],
+            "fecha": str(e["fecha"]),
+            "quien_pago": e["quien_pago"],
+            "subcategoria": e.get("subcategoria"),
+            "categoria": e.get("categoria"),
+            "concepto": e["concepto"],
+            "valor": e["valor"],
+            "compartida": e["compartida"],
+            "valor_a_pagar": float(e["valor_a_pagar"]) if e.get("valor_a_pagar") else None,
+        }
+        for e in expenses
+    ]
+
+
 # ── Expense Endpoints ─────────────────────────────────────────────────────────
 
 @app.get("/api/expenses", response_model=list[api_models.ExpenseResponse])
@@ -152,9 +226,12 @@ def list_expenses(
     month: int = Query(...),
     user: dict = Depends(api_auth.get_current_user),
 ):
+    if not user.get("couple_id"):
+        return []
+
     couple_users = database.get_couple_users(user["couple_id"])
     user_ids = [u["id"] for u in couple_users]
-    expenses = database.get_expenses_by_month_and_users(year, month, user_ids)
+    expenses = database.get_expenses_by_month_and_users(year, month, user_ids, user["couple_id"])
     return [
         {
             "id": e["id"],
@@ -176,11 +253,15 @@ async def create_expense(
     expense: api_models.ExpenseCreate,
     user: dict = Depends(api_auth.get_current_user),
 ):
+    if not user.get("couple_id"):
+        raise HTTPException(status_code=400, detail="No estás en una pareja")
+
     couple_users = database.get_couple_users(user["couple_id"])
     users_dict = {u["id"]: u["display_name"] for u in couple_users}
     splits = database.get_split_for_couple(user["couple_id"])
 
     data = expense.model_dump()
+    data["couple_id"] = user["couple_id"]  # Link expense to couple
 
     payer_user = next((u for u in couple_users if u["display_name"] == data.get("quien_pago")), None)
     if payer_user:
@@ -214,6 +295,10 @@ async def update_expense(
     existing = database.get_expense_by_id(expense_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Gasto no encontrado")
+
+    # Verify expense belongs to user's active couple
+    if existing.get("couple_id") != user.get("couple_id"):
+        raise HTTPException(status_code=403, detail="No tienes acceso a este gasto")
 
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
     if not fields:
@@ -280,6 +365,10 @@ async def delete_expense(
     if existing is None:
         raise HTTPException(status_code=404, detail="Gasto no encontrado")
 
+    # Verify expense belongs to user's active couple
+    if existing.get("couple_id") != user.get("couple_id"):
+        raise HTTPException(status_code=403, detail="No tienes acceso a este gasto")
+
     database.delete_expense(expense_id)
 
     if existing.get("compartida") == "Si":
@@ -305,11 +394,14 @@ def get_balance(
     month: int = Query(...),
     user: dict = Depends(api_auth.get_current_user),
 ):
+    if not user.get("couple_id"):
+        raise HTTPException(status_code=400, detail="No estás en una pareja")
+
     couple_users = database.get_couple_users(user["couple_id"])
     user_ids = [u["id"] for u in couple_users]
     users_dict = {u["id"]: u["display_name"] for u in couple_users}
 
-    expenses = database.get_expenses_by_month_and_users(year, month, user_ids)
+    expenses = database.get_expenses_by_month_and_users(year, month, user_ids, user["couple_id"])
     if not expenses:
         return {
             "mes": "",

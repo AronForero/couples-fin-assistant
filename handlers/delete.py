@@ -20,6 +20,11 @@ async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not user:
         return
 
+    # Solo user guard
+    if not user.get("couple_id"):
+        await msg.reply_text("No tenés pareja. Creá una desde la web.")
+        return
+
     text = msg.text or ""
     date_str = msg.date.strftime("%Y-%m-%d")
     sender = user["display_name"]
@@ -33,6 +38,11 @@ async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     existing = database.get_expense_by_id(expense_id)
     if existing is None:
         await msg.reply_text(f"Gasto #{expense_id} no encontrado.")
+        return
+
+    # Verify expense belongs to user's active couple
+    if existing.get("couple_id") != user.get("couple_id"):
+        await msg.reply_text("Este gasto no pertenece a tu pareja actual.")
         return
 
     database.delete_expense(expense_id)

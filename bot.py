@@ -49,21 +49,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = database.get_user_by_chat_id(update.message.chat.id)
     if not user:
         await update.message.reply_text(
-            "No estás registrado. Usa /link <email> para vincular tu cuenta."
+            "¡Hola! Soy FinDuo, tu asistente de finanzas.\n"
+            "Vinculá tu cuenta con /link <email>."
         )
         return
 
-    couple_users = database.get_couple_users(user["couple_id"]) if user.get("couple_id") else []
-    user_names = _get_user_names(couple_users)
-
-    welcome = (
-        f"👋 Hola! Soy el bot de finanzas de {user_names[0]} & {user_names[1]}.\n\n"
-        "Puedes escribirme de forma natural:\n"
-        "• *Registrar un gasto:* 'cine 30000' o 'Mon pagó supermercado 50000'\n"
-        "• *Ver el balance:* 'Balance' o 'Balance de marzo'\n"
-        "• *Cambiar el porcentaje:* 'Cambia el split a 65 para Aru y 35 para Mon'\n"
-        "• O usa el comando */split 65 35* si prefieres"
-    )
+    if user.get("couple_id"):
+        couple_users = database.get_couple_users(user["couple_id"])
+        user_names = _get_user_names(couple_users)
+        welcome = (
+            f"👋 ¡Hola {user['display_name']}! Estás en pareja con {user_names[1] if user_names[0] == user['display_name'] else user_names[0]}.\n\n"
+            "Puedes escribirme de forma natural:\n"
+            "• *Registrar un gasto:* 'cine 30000' o 'Mon pagó supermercado 50000'\n"
+            "• *Ver el balance:* 'Balance' o 'Balance de marzo'\n"
+            "• *Cambiar el porcentaje:* 'Cambia el split a 65 para Aru y 35 para Mon'\n"
+            "• O usa el comando */split 65 35* si prefieres"
+        )
+    else:
+        welcome = (
+            f"¡Hola {user['display_name']}! No estás en una pareja.\n"
+            f"Creá una desde la web para empezar a registrar gastos compartidos."
+        )
     await update.message.reply_text(welcome, parse_mode="Markdown")
 
 

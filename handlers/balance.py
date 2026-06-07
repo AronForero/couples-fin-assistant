@@ -69,6 +69,13 @@ async def handle_balance(
     if not user:
         return
 
+    # Solo user guard
+    if not user.get("couple_id"):
+        await msg.reply_text(
+            "No tenés pareja. Creá una desde la web para ver el balance."
+        )
+        return
+
     sender = user["display_name"]
 
     if year is None or month is None:
@@ -76,7 +83,7 @@ async def handle_balance(
         date_str = msg.date.strftime("%Y-%m-%d")
         year, month = llm.extract_month(text, date_str)
 
-    expenses = database.get_expenses_by_month(year, month)
+    expenses = database.get_expenses_by_month(year, month, user["couple_id"])
 
     if not expenses:
         await msg.reply_text(_NO_DATA_MSG)
