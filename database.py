@@ -46,13 +46,15 @@ CREATE TABLE IF NOT EXISTS couples (
 
 _CREATE_USERS = """
 CREATE TABLE IF NOT EXISTS users (
-    id            SERIAL PRIMARY KEY,
-    email         VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    display_name  VARCHAR(50) NOT NULL,
-    couple_id     INTEGER REFERENCES couples(id),
-    chat_id       BIGINT UNIQUE,
-    created_at    TIMESTAMPTZ DEFAULT NOW()
+    id              SERIAL PRIMARY KEY,
+    email           VARCHAR(255) UNIQUE NOT NULL,
+    password_hash   VARCHAR(255) NOT NULL,
+    display_name    VARCHAR(50) NOT NULL,
+    couple_id       INTEGER REFERENCES couples(id),
+    chat_id         BIGINT UNIQUE,
+    status          TEXT DEFAULT 'trial' CHECK (status IN ('trial', 'active', 'suspended')),
+    status_updated_at TIMESTAMPTZ DEFAULT NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 """
 
@@ -63,6 +65,17 @@ CREATE TABLE IF NOT EXISTS couple_settings (
     split_percentage NUMERIC(5,4) NOT NULL,
     left_at          TIMESTAMPTZ NULL,
     PRIMARY KEY (couple_id, user_id)
+);
+"""
+
+_CREATE_INCOMES = """
+CREATE TABLE IF NOT EXISTS incomes (
+    id         SERIAL PRIMARY KEY,
+    fecha      DATE         NOT NULL,
+    concepto   TEXT         NOT NULL,
+    valor      INTEGER      NOT NULL,
+    user_id    INTEGER      NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ  DEFAULT NOW()
 );
 """
 
@@ -96,6 +109,16 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                    WHERE table_name='couple_settings' AND column_name='left_at') THEN
         ALTER TABLE couple_settings ADD COLUMN left_at TIMESTAMPTZ NULL;
+    END IF;
+END$$;
+"""
+
+_MIGRATE_USERS_STATUS = """
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name='users' AND column_name='status') THEN
+        UPDATE users SET status = 'active' WHERE status IS NULL;
     END IF;
 END$$;
 """
@@ -136,7 +159,7 @@ def _seed_default_couple(cur) -> tuple[int, int, int] | None:
     cur.execute(
         """INSERT INTO users (email, password_hash, display_name, couple_id, chat_id)
            VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-        ("aru@finduo.local", "!", "Aru", couple_id, 247795192),
+        ("aru@finduo.local", "$2b$12$ePVXcjHHhzQ8rGJJsgRdYOj8VAC/EA5KziO40pUGQ0VkjdDNIe1gK", "Aru", couple_id, 247795192),
     )
     aru_id = cur.fetchone()[0]
 
@@ -170,10 +193,13 @@ def init_db():
             cur.execute(_CREATE_COUPLE_SETTINGS)
             # 4. expenses — depends on couples (via couple_id)
             cur.execute(_CREATE_EXPENSES)
+            # 5. incomes — depends on users (via user_id)
+            cur.execute(_CREATE_INCOMES)
             # 5. migrations
             cur.execute(_ADD_COUPLE_ID_TO_EXPENSES)
             cur.execute(_ADD_LEFT_AT_TO_COUPLE_SETTINGS)
             cur.execute(_DROP_OLD_EXPENSE_COLUMNS)
+            cur.execute(_MIGRATE_USERS_STATUS)
 
             _seed_default_couple(cur)
         conn.commit()
@@ -203,7 +229,7 @@ def get_couple_by_id(couple_id: int) -> dict | None:
                 "SELECT COUNT(*) FROM couple_settings WHERE couple_id = %s AND left_at IS NULL",
                 (couple_id,),
             )
-            has_active = cur.fetchone()[0] > 0
+            has_active = cur.fetchone()["count"] > 0
             if not has_active:
                 return None
 
@@ -344,7 +370,7 @@ def get_couple_expenses(couple_id: int) -> list[dict]:
 
 
 def get_user_by_id(user_id: int) -> dict | None:
-    sql = "SELECT id, email, display_name, couple_id, chat_id, created_at FROM users WHERE id = %s"
+    sql = "SELECT id, email, display_name, couple_id, chat_id, status, status_updated_at, created_at FROM users WHERE id = %s"
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, (user_id,))
@@ -353,7 +379,7 @@ def get_user_by_id(user_id: int) -> dict | None:
 
 
 def get_user_by_email(email: str) -> dict | None:
-    sql = "SELECT id, email, password_hash, display_name, couple_id, chat_id, created_at FROM users WHERE email = %s"
+    sql = "SELECT id, email, password_hash, display_name, couple_id, chat_id, status, status_updated_at, created_at FROM users WHERE email = %s"
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, (email,))
@@ -362,7 +388,7 @@ def get_user_by_email(email: str) -> dict | None:
 
 
 def get_user_by_display_name(display_name: str) -> dict | None:
-    sql = "SELECT id, email, display_name, couple_id, chat_id, created_at FROM users WHERE display_name = %s"
+    sql = "SELECT id, email, display_name, couple_id, chat_id, status, status_updated_at, created_at FROM users WHERE display_name = %s"
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, (display_name,))
@@ -371,12 +397,36 @@ def get_user_by_display_name(display_name: str) -> dict | None:
 
 
 def get_user_by_chat_id(chat_id: int) -> dict | None:
-    sql = "SELECT id, email, display_name, couple_id, chat_id, created_at FROM users WHERE chat_id = %s"
+    sql = "SELECT id, email, display_name, couple_id, chat_id, status, status_updated_at, created_at FROM users WHERE chat_id = %s"
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, (chat_id,))
             row = cur.fetchone()
     return dict(row) if row else None
+
+
+def is_user_active(user: dict) -> bool:
+    if user.get("status") == "active":
+        return True
+    if user.get("status") == "suspended":
+        return False
+    if user.get("status") == "trial":
+        from datetime import datetime, timedelta, timezone
+        created = user.get("created_at") or datetime.now(timezone.utc)
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) < created + timedelta(days=30)
+    return False
+
+
+def update_user_status(user_id: int, status: str) -> bool:
+    sql = "UPDATE users SET status = %s, status_updated_at = NOW() WHERE id = %s"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (status, user_id))
+            updated = cur.rowcount > 0
+        conn.commit()
+    return updated
 
 
 def update_user_chat_id(user_id: int, chat_id: int) -> bool:
@@ -390,7 +440,7 @@ def update_user_chat_id(user_id: int, chat_id: int) -> bool:
 
 
 def get_couple_users(couple_id: int) -> list[dict]:
-    sql = "SELECT id, email, display_name, couple_id, chat_id FROM users WHERE couple_id = %s ORDER BY id"
+    sql = "SELECT id, email, display_name, couple_id, chat_id, status FROM users WHERE couple_id = %s ORDER BY id"
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, (couple_id,))
@@ -402,7 +452,7 @@ def get_partner(user_id: int) -> dict | None:
     if not user or not user.get("couple_id"):
         return None
     sql = """
-        SELECT id, email, display_name, couple_id, chat_id
+        SELECT id, email, display_name, couple_id, chat_id, status
         FROM users
         WHERE couple_id = %s AND id != %s
         LIMIT 1
@@ -564,3 +614,81 @@ def get_recent_expenses(limit: int, couple_id: int) -> list[dict]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, (couple_id, limit))
             return [dict(row) for row in cur.fetchall()]
+
+
+# ── Incomes ──────────────────────────────────────────────────────────────────
+
+def insert_income(income: dict) -> int:
+    sql = """
+        INSERT INTO incomes (fecha, concepto, valor, user_id)
+        VALUES (%(fecha)s, %(concepto)s, %(valor)s, %(user_id)s)
+        RETURNING id
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, income)
+            row_id = cur.fetchone()[0]
+        conn.commit()
+    return row_id
+
+
+def get_incomes_by_month(year: int, month: int, user_id: int) -> list[dict]:
+    sql = """
+        SELECT id, fecha, concepto, valor, user_id, created_at
+        FROM incomes
+        WHERE EXTRACT(YEAR  FROM fecha) = %s
+          AND EXTRACT(MONTH FROM fecha) = %s
+          AND user_id = %s
+        ORDER BY fecha, id
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (year, month, user_id))
+            return [dict(row) for row in cur.fetchall()]
+
+
+def get_recent_incomes(limit: int, user_id: int) -> list[dict]:
+    sql = """
+        SELECT id, fecha, concepto, valor, user_id, created_at
+        FROM incomes
+        WHERE user_id = %s
+        ORDER BY id DESC
+        LIMIT %s
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (user_id, limit))
+            return [dict(row) for row in cur.fetchall()]
+
+
+def get_income_by_id(income_id: int) -> dict | None:
+    sql = "SELECT id, fecha, concepto, valor, user_id, created_at FROM incomes WHERE id = %s"
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (income_id,))
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def update_income(income_id: int, fields: dict) -> bool:
+    if not fields:
+        return False
+    set_clause = ", ".join(f"{k} = %({k})s" for k in fields)
+    sql = f"UPDATE incomes SET {set_clause} WHERE id = %(id)s"
+    fields["id"] = income_id
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, fields)
+            updated = cur.rowcount > 0
+        conn.commit()
+    return updated
+
+
+def delete_income(income_id: int) -> bool:
+    sql = "DELETE FROM incomes WHERE id = %s"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (income_id,))
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted

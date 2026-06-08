@@ -7,8 +7,9 @@ import database
 logger = logging.getLogger(__name__)
 
 _HELP_MSG = (
-    "Para eliminar un gasto, indica el ID.\n"
+    "Para eliminar un gasto o ingreso, indica el ID.\n"
     "Ej: \"eliminar gasto 42\"\n"
+    "Ej: \"borrar ingreso 7\"\n"
     "\n"
     "Para ver los IDs, escribe \"últimos gastos\" o /last."
 )
@@ -20,9 +21,10 @@ async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not user:
         return
 
-    # Solo user guard
-    if not user.get("couple_id"):
-        await msg.reply_text("No tenés pareja. Creá una desde la web.")
+    if not database.is_user_active(user):
+        await msg.reply_text(
+            "Tu cuenta está suspendida. Completa tu pago para continuar."
+        )
         return
 
     text = msg.text or ""
@@ -34,37 +36,54 @@ async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await msg.reply_text(_HELP_MSG)
         return
 
-    expense_id = delete_data["id"]
-    existing = database.get_expense_by_id(expense_id)
-    if existing is None:
-        await msg.reply_text(f"Gasto #{expense_id} no encontrado.")
+    target_id = delete_data["id"]
+
+    expense = database.get_expense_by_id(target_id)
+    if expense is not None:
+        if expense.get("couple_id") != user.get("couple_id"):
+            await msg.reply_text("Este gasto no pertenece a tu pareja actual.")
+            return
+
+        database.delete_expense(target_id)
+
+        concepto = expense.get("concepto", "")
+        valor = int(expense["valor"])
+        fecha = str(expense["fecha"])
+
+        await msg.reply_text(
+            f"🗑 Gasto #{target_id} eliminado: {concepto} — ${valor:,}"
+        )
+
+        if expense.get("compartida") == "Si":
+            partner = database.get_partner(user["id"])
+            if partner and partner.get("chat_id"):
+                try:
+                    await context.bot.send_message(
+                        chat_id=partner["chat_id"],
+                        text=(
+                            f"⚠️ {sender} ha eliminado un gasto compartido:\n"
+                            f"#{target_id} — {concepto} — ${valor:,} ({fecha})"
+                        ),
+                    )
+                except Exception:
+                    logger.warning("Could not notify partner %s of delete", partner["chat_id"])
         return
 
-    # Verify expense belongs to user's active couple
-    if existing.get("couple_id") != user.get("couple_id"):
-        await msg.reply_text("Este gasto no pertenece a tu pareja actual.")
+    income = database.get_income_by_id(target_id)
+    if income is not None:
+        if income.get("user_id") != user.get("id"):
+            await msg.reply_text("Este ingreso no te pertenece.")
+            return
+
+        database.delete_income(target_id)
+
+        concepto = income.get("concepto", "")
+        valor = int(income["valor"])
+        fecha = str(income["fecha"])
+
+        await msg.reply_text(
+            f"🗑 Ingreso #{target_id} eliminado: {concepto} — ${valor:,}"
+        )
         return
 
-    database.delete_expense(expense_id)
-
-    concepto = existing.get("concepto", "")
-    valor = int(existing["valor"])
-    fecha = str(existing["fecha"])
-
-    await msg.reply_text(
-        f"🗑 Gasto #{expense_id} eliminado: {concepto} — ${valor:,}"
-    )
-
-    if existing.get("compartida") == "Si":
-        partner = database.get_partner(user["id"])
-        if partner and partner.get("chat_id"):
-            try:
-                await context.bot.send_message(
-                    chat_id=partner["chat_id"],
-                    text=(
-                        f"⚠️ {sender} ha eliminado un gasto compartido:\n"
-                        f"#{expense_id} — {concepto} — ${valor:,} ({fecha})"
-                    ),
-                )
-            except Exception:
-                logger.warning("Could not notify partner %s of delete", partner["chat_id"])
+    await msg.reply_text(f"#{target_id} no encontrado como gasto ni como ingreso.")

@@ -21,6 +21,12 @@ async def apply_split(
     if not user:
         return
 
+    if not database.is_user_active(user):
+        await msg.reply_text(
+            "Tu cuenta está suspendida. Completa tu pago para continuar."
+        )
+        return
+
     # Solo user guard
     if not user.get("couple_id"):
         await msg.reply_text("No tenés pareja. Creá una desde la web para configurar el split.")
@@ -67,6 +73,12 @@ async def handle_split_command(update: Update, context: ContextTypes.DEFAULT_TYP
     msg = update.message
     user = database.get_user_by_chat_id(msg.chat.id)
     if not user:
+        return
+
+    if not database.is_user_active(user):
+        await msg.reply_text(
+            "Tu cuenta está suspendida. Completa tu pago para continuar."
+        )
         return
 
     args = context.args or []

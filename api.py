@@ -125,6 +125,9 @@ def get_me(user: dict = Depends(api_auth.get_current_user)):
     if user.get("couple_id"):
         couple = database.get_couple_by_id(user["couple_id"])
         user["invite_code"] = couple["invite_code"] if couple else None
+
+    user["created_at"] = str(user.get("created_at", ""))
+    user["status_updated_at"] = str(user.get("status_updated_at")) if user.get("status_updated_at") else None
     return user
 
 
@@ -384,6 +387,84 @@ async def delete_expense(
             )
 
     return {"deleted": True, "id": expense_id}
+
+
+# ── Income Endpoints ──────────────────────────────────────────────────────────
+
+@app.get("/api/incomes", response_model=list[api_models.IncomeResponse])
+def list_incomes(
+    year: int = Query(...),
+    month: int = Query(...),
+    user: dict = Depends(api_auth.get_current_user),
+):
+    incomes = database.get_incomes_by_month(year, month, user["id"])
+    return [
+        {
+            "id": i["id"],
+            "fecha": str(i["fecha"]),
+            "concepto": i["concepto"],
+            "valor": i["valor"],
+            "user_id": i["user_id"],
+            "created_at": str(i["created_at"]),
+        }
+        for i in incomes
+    ]
+
+
+@app.post("/api/incomes", response_model=api_models.IncomeResponse, status_code=201)
+def create_income(
+    body: api_models.IncomeCreate,
+    user: dict = Depends(api_auth.get_current_user),
+):
+    data = body.model_dump()
+    data["user_id"] = user["id"]
+    row_id = database.insert_income(data)
+    return {"id": row_id, **data, "created_at": ""}
+
+
+@app.put("/api/incomes/{income_id}", response_model=api_models.IncomeResponse)
+def update_income(
+    income_id: int,
+    body: api_models.IncomeUpdate,
+    user: dict = Depends(api_auth.get_current_user),
+):
+    existing = database.get_income_by_id(income_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Ingreso no encontrado")
+
+    if existing.get("user_id") != user.get("id"):
+        raise HTTPException(status_code=403, detail="No tienes acceso a este ingreso")
+
+    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not fields:
+        raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+
+    database.update_income(income_id, fields)
+    updated = database.get_income_by_id(income_id)
+    return {
+        "id": updated["id"],
+        "fecha": str(updated["fecha"]),
+        "concepto": updated["concepto"],
+        "valor": updated["valor"],
+        "user_id": updated["user_id"],
+        "created_at": str(updated["created_at"]),
+    }
+
+
+@app.delete("/api/incomes/{income_id}")
+def delete_income(
+    income_id: int,
+    user: dict = Depends(api_auth.get_current_user),
+):
+    existing = database.get_income_by_id(income_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Ingreso no encontrado")
+
+    if existing.get("user_id") != user.get("id"):
+        raise HTTPException(status_code=403, detail="No tienes acceso a este ingreso")
+
+    database.delete_income(income_id)
+    return {"deleted": True, "id": income_id}
 
 
 # ── Balance & Settings ────────────────────────────────────────────────────────

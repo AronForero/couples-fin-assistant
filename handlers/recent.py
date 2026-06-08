@@ -45,6 +45,12 @@ async def handle_recent(update: Update, context: ContextTypes.DEFAULT_TYPE, limi
     if not user:
         return
 
+    if not database.is_user_active(user):
+        await msg.reply_text(
+            "Tu cuenta está suspendida. Completa tu pago para continuar."
+        )
+        return
+
     # Solo user guard
     if not user.get("couple_id"):
         await msg.reply_text(

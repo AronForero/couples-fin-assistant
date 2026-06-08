@@ -124,6 +124,61 @@ All other users are silently ignored.
 
 ---
 
+## Account Status
+
+When you register, you get a 30-day free trial. After that, you need a paid account to keep using the bot.
+
+- **Trial** — Yellow banner in the dashboard: *"Modo de prueba — X días restantes"*. Full access to everything.
+- **Active** — Paid account. Full access.
+- **Suspended** — Coral banner in the dashboard: *"Tu cuenta está suspendida. Completa tu pago para continuar."*
+  - The Telegram bot will reject all commands.
+  - The dashboard still works for viewing your data, but you can't make changes.
+
+> Payment integration is not implemented yet. Status changes will be made automatically once payments are integrated.
+
+---
+
+## Tracking Income
+
+You can also record money you receive — salary, freelance work, profits from a side business, etc. Income tracking is personal (not shared with your partner).
+
+Send the bot a message with an income keyword and a value:
+
+```
+Salario 2000000
+Ingreso freelance 1500000
+Recibí utilidades panaderia 3500000
+Cobré venta de bicicleta 800000
+```
+
+Income keywords the bot understands: *salario, ingreso, ingresos, recibí, gané, cobré, utilidades, honorarios, freelance, venta, pago recibido*.
+
+After saving, you'll get a confirmation like:
+
+```
+✅ Ingreso #5 registrado:
+📅 Fecha: 2026-06-07
+👤 Recibido por: Aru
+📝 Concepto: Salario
+💰 Valor: $2,000,000
+```
+
+You can also edit and delete incomes from the bot, just like expenses — for example: *"editar ingreso 5, el valor era 2500000"* or *"borrar ingreso 5"*.
+
+> Income calculations (your actual money after subtracting expenses) are coming in a later version. For now, the dashboard just shows the list.
+
+### Dashboard transactions page
+
+The **Gastos** page has been renamed to **Transacciones** and now shows both expenses and incomes in the same list. Use the filter at the top to switch between:
+
+- **Todos** — default, shows both
+- **Gastos** — only expenses
+- **Ingresos** — only incomes
+
+Income rows are highlighted in green with a "+" sign so you can spot them at a glance. The page also shows two summary cards: total expenses and total incomes for the selected month.
+
+---
+
 ## Project Structure
 
 ```
@@ -133,19 +188,38 @@ finduo/
 ├── database.py             # PostgreSQL init, CRUD, CSV export
 ├── llm.py                  # LLM expense parsing and month extraction
 ├── finance.py              # Split calculation and balance aggregation
+├── api.py                  # FastAPI dashboard backend (V4)
+├── api_auth.py             # JWT auth + password hashing
+├── api_models.py           # Pydantic models for API
 ├── sheets.py               # Google Sheets export (V2)
 ├── handlers/
 │   ├── expense.py          # AddExpense flow
+│   ├── income.py           # AddIncome flow (V7)
 │   ├── balance.py          # Balance + sheet export callback
-│   └── settings.py         # /split command (V2)
+│   ├── recent.py           # Recent expenses list
+│   ├── edit.py             # Edit expense or income (V7)
+│   ├── delete.py           # Delete expense or income (V7)
+│   ├── settings.py         # /split command (V2)
+│   ├── chat.py             # Conversational fallback
+│   └── link.py             # /link email command
+├── couples-fin-dashboard/  # Next.js web dashboard
 ├── docker-compose.yml
 ├── Dockerfile
 ├── requirements.txt
 ├── .env.example
 └── version/
-    ├── mvp.md              # V1 feature spec
-    ├── version-2.md        # V2 feature spec
-    └── version-3.md        # V3 feature spec
+    ├── mvp.md
+    ├── version-2.md
+    ├── version-3.md
+    ├── version-4.1-schema.md
+    ├── version-4.2-auth.md
+    ├── version-4.3a-finance-llm.md
+    ├── version-4.3b-handlers-bot-api.md
+    ├── version-4.4-notifications.md
+    ├── version-5.1-soft-delete-schema.md
+    ├── version-5.2-soft-delete-api.md
+    ├── version-5.3-soft-delete-bot.md
+    └── version-5.4-soft-delete-frontend.md
 ```
 
 ---
@@ -279,10 +353,14 @@ Month is derived at query time (`EXTRACT(MONTH FROM fecha)`), not stored separat
 
 ## Roadmap
 
-| Version | Feature |
-|---|---|
-| **V1 (current)** | Expense registration, balance query, CSV export, access control |
-| **V2** | Dynamic split percentage via `/split` command, Google Sheets link export |
-| **V3** | Personal expense layer — private per-user expenses, personal balance, private Google Sheet per person |
+| Version | Feature | Status |
+|---|---|---|
+| **V1** | Expense registration, balance query, CSV export, access control | ✅ |
+| **V2** | Dynamic split percentage via `/split` command, Google Sheets link export | ✅ |
+| **V3** | Personal expense layer — private per-user expenses, personal balance, private Google Sheet per person | ✅ |
+| **V4** | Web dashboard with JWT auth, per-user accounts, couple invite via web | ✅ |
+| **V5** | Couple lifecycle — leave couple, view history, expenses linked to specific couples | ✅ |
+| **V6** | User account status — 30-day trial, active, suspended; bot blocked when suspended; dashboard read-only | ✅ |
+| **V7** | Income feature — record salary, freelance, etc. via bot; dashboard filter for expenses vs incomes | ✅ |
 
 See the `version/` directory for detailed specs of each version.

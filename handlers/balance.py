@@ -69,6 +69,12 @@ async def handle_balance(
     if not user:
         return
 
+    if not database.is_user_active(user):
+        await msg.reply_text(
+            "Tu cuenta está suspendida. Completa tu pago para continuar."
+        )
+        return
+
     # Solo user guard
     if not user.get("couple_id"):
         await msg.reply_text(

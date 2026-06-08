@@ -36,6 +36,12 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not user:
         return
 
+    if not database.is_user_active(user):
+        await msg.reply_text(
+            "Tu cuenta está suspendida. Completa tu pago para continuar."
+        )
+        return
+
     text = msg.text or ""
     sender = user["display_name"]
 

@@ -33,6 +33,27 @@ class ExpenseResponse(BaseModel):
     valor_a_pagar: float | None = None
 
 
+class IncomeCreate(BaseModel):
+    fecha: str
+    concepto: str
+    valor: int
+
+
+class IncomeUpdate(BaseModel):
+    fecha: str | None = None
+    concepto: str | None = None
+    valor: int | None = None
+
+
+class IncomeResponse(BaseModel):
+    id: int
+    fecha: str
+    concepto: str
+    valor: int
+    user_id: int
+    created_at: str
+
+
 class PersonalBalance(BaseModel):
     viewer_id: int
     viewer_name: str
@@ -90,6 +111,9 @@ class UserResponse(BaseModel):
     couple_id: int | None
     invite_code: str | None = None
     chat_id: int | None
+    status: str
+    status_updated_at: str | None = None
+    created_at: str
 
 
 class CoupleMember(BaseModel):

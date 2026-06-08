@@ -11,6 +11,7 @@ from config import TELEGRAM_TOKEN
 import database
 import llm
 from handlers.expense import handle_expense
+from handlers.income import handle_income
 from handlers.balance import handle_balance
 from handlers.settings import handle_split_command, apply_split
 from handlers.chat import handle_chat
@@ -61,6 +62,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"👋 ¡Hola {user['display_name']}! Estás en pareja con {user_names[1] if user_names[0] == user['display_name'] else user_names[0]}.\n\n"
             "Puedes escribirme de forma natural:\n"
             "• *Registrar un gasto:* 'cine 30000' o 'Mon pagó supermercado 50000'\n"
+            "• *Registrar un ingreso:* 'Salario 2000000' o 'Ingreso freelance 1500000'\n"
             "• *Ver el balance:* 'Balance' o 'Balance de marzo'\n"
             "• *Cambiar el porcentaje:* 'Cambia el split a 65 para Aru y 35 para Mon'\n"
             "• O usa el comando */split 65 35* si prefieres"
@@ -68,7 +70,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         welcome = (
             f"¡Hola {user['display_name']}! No estás en una pareja.\n"
-            f"Creá una desde la web para empezar a registrar gastos compartidos."
+            f"Podés registrar gastos personales e ingresos desde acá.\n"
+            f"Creá una pareja desde la web para empezar a registrar gastos compartidos."
         )
     await update.message.reply_text(welcome, parse_mode="Markdown")
 
@@ -125,6 +128,9 @@ async def dispatch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     elif intent == "delete":
         await handle_delete(update, context)
+
+    elif intent == "income":
+        await handle_income(update, context)
 
     else:
         await handle_expense(update, context)
