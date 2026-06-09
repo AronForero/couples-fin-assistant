@@ -1,36 +1,92 @@
-# Guía de uso — Bot de Finanzas Aru & Mon
+# FinDuo — Guía de uso
 
-Este bot vive en Telegram y te permite registrar gastos, consultar el balance del mes y conversar con él, todo escribiendo de forma natural. No hay menús ni formularios — solo manda un mensaje.
+FinDuo es tu asistente personal de finanzas. Tiene dos caras:
+
+- **Bot de Telegram** — registra gastos e ingresos escribiendo en lenguaje natural.
+- **Dashboard web** — visualiza, edita y gestiona todo desde el navegador.
+
+No hay formularios complicados, ni menús. Escribes como hablarías y el bot entiende.
+
+---
+
+## Tabla de contenidos
+
+1. [Empezar](#empezar)
+2. [Telegram Bot](#telegram-bot)
+   - [Cuenta y vinculación](#cuenta-y-vinculación)
+   - [Registrar un gasto](#registrar-un-gasto)
+   - [Registrar un ingreso](#registrar-un-ingreso)
+   - [Ver el balance del mes](#ver-el-balance-del-mes)
+   - [Ver gastos recientes](#ver-gastos-recientes)
+   - [Editar un gasto o ingreso](#editar-un-gasto-o-ingreso)
+   - [Eliminar un gasto o ingreso](#eliminar-un-gasto-o-ingreso)
+   - [Cambiar el porcentaje de gastos compartidos](#cambiar-el-porcentaje-de-gastos-compartidos)
+   - [Salir de la pareja](#salir-de-la-pareja)
+   - [Conversar con el bot](#conversar-con-el-bot)
+3. [Dashboard Web](#dashboard-web)
+   - [Acceso](#acceso)
+   - [Estado de cuenta](#estado-de-cuenta)
+   - [Página de balance](#página-de-balance)
+   - [Página de transacciones](#página-de-transacciones)
+   - [Gestión de pareja](#gestión-de-pareja)
+   - [Parejas anteriores](#parejas-anteriores)
+   - [Invitar pareja](#invitar-pareja)
+4. [Categorías de gastos](#categorías-de-gastos)
+5. [Cómo se divide un gasto compartido](#cómo-se-divide-un-gasto-compartido)
+6. [Resumen de comandos](#resumen-de-comandos)
+7. [Mensajes de error](#mensajes-de-error)
+
+---
+
+## Empezar
+
+1. Crea tu cuenta en el dashboard web (botón "Registrarse").
+2. Si querés usar el bot de Telegram, vincula tu cuenta con `/link tu@email.com` en el chat con el bot.
+3. Empezás con un **trial gratuito de 30 días** con acceso completo.
+4. Pasado ese tiempo, necesitás una cuenta paga para seguir usando el bot (el dashboard sigue accesible en modo lectura).
+
+---
+
+# Telegram Bot
+
+## Cuenta y vinculación
+
+| Lo que escribes | Resultado |
+|---|---|
+| `/start` | Mensaje de bienvenida con ejemplos según si estás en pareja o no |
+| `/link tu@email.com` | Vincula tu cuenta de Telegram con tu cuenta del dashboard |
+
+Si no estás vinculado, el bot te avisa y no responde a otros mensajes.
 
 ---
 
 ## Registrar un gasto
 
-Escribe el concepto del gasto y el valor. El orden no importa.
+Escribí el concepto y el valor. El orden no importa. El bot deduce el resto.
 
 ### Ejemplos
 
 | Lo que escribes | Lo que entiende el bot |
 |---|---|
-| `Supermercado 50000` | Gasto de $50.000 en supermercado, pagado por quien escribe |
+| `Supermercado 50000` | Gasto de $50.000, pagado por quien escribe |
 | `crepes&waffles 120000` | Restaurante, $120.000 |
 | `Gasolina 80000 Aru` | Aru pagó $80.000 de gasolina |
 | `Mon pagó gasolina 80000` | Mon pagó $80.000 de gasolina |
-| `cine 30000 compartida` | Gasto compartido (se divide entre los dos), $30.000 |
-| `Mon pagó vegetales 20000, proteínas 100000. Total: $120000` | Un solo registro de $120.000 con concepto consolidado |
+| `cine 30000 compartida` | Gasto compartido, $30.000 |
+| `Mon pagó vegetales 20000, proteínas 100000. Total: $120000` | Un solo registro de $120.000 |
 | `medicamento 15000 ayer` | Gasto de ayer, $15.000 |
 | `arriendo 1500000 el 01/05` | Gasto con fecha específica |
 
 ### Lo que el bot deduce automáticamente
 
-- **Quién pagó** — el que manda el mensaje. Si el mensaje menciona "Aru" o "Mon", usa esa persona.
-- **Fecha** — la del mensaje. Si el mensaje dice "ayer", "el lunes", "01/07", etc., usa esa fecha.
-- **Compartida** — por defecto, todos los gastos son **personales** (solo tuyos). Agrega `compartida`, `juntos`, `entre ambos`, `los dos` o `dividido` si el gasto se divide entre los dos.
-- **Categoría y subcategoría** — el bot las infiere del concepto automáticamente.
+- **Quién pagó** — el que manda el mensaje. Si decís "Aru" o "Mon", usa esa persona.
+- **Fecha** — la del mensaje. Si decís "ayer", "el lunes", "01/07", usa esa fecha.
+- **Compartida** — por defecto es **personal** (solo tuyo). Agregá `compartida`, `juntos`, `entre ambos`, `los dos` o `dividido` si se divide entre los dos.
+- **Categoría y subcategoría** — el bot las infiere del concepto.
 
 ### Confirmación
 
-Después de guardar el gasto, **ambos** reciben una confirmación:
+Después de guardar, **ambos** reciben una confirmación (o solo vos si es personal):
 
 ```
 ✅ Gasto #42 registrado:
@@ -42,38 +98,56 @@ Después de guardar el gasto, **ambos** reciben una confirmación:
 💰 Valor: $50,000
 🤝 Compartida: Si
 💸 Valor a pagar: $31,500
-📌 Observación: Aru Debe
 ```
 
-Si el gasto es personal, solo lo recibe quien lo registró.
+---
 
-### Cómo se divide el gasto compartido
+## Registrar un ingreso
 
-Por defecto:
-- Si **Aru** pagó → Mon le debe el **37%**
-- Si **Mon** pagó → Aru le debe el **63%**
+Además de gastos, podés registrar dinero que recibís — salario, freelance, utilidades, etc. Es **personal**, no se comparte con tu pareja.
 
-Este porcentaje puede cambiarse (ver sección más abajo).
+### Ejemplos
+
+| Lo que escribes | Lo que entiende el bot |
+|---|---|
+| `Salario 2000000` | Ingreso de $2.000.000, concepto "Salario" |
+| `Ingreso freelance 1500000` | Ingreso freelance, $1.500.000 |
+| `Recibí utilidades panaderia 3500000` | Ingreso de utilidades, $3.500.000 |
+| `Cobré venta de bicicleta 800000` | Ingreso de venta, $800.000 |
+| `Honorarios 1200000 ayer` | Ingreso de ayer, $1.200.000 |
+
+### Palabras clave reconocidas
+
+El bot identifica ingresos cuando el mensaje contiene alguna de estas palabras:
+
+`salario`, `ingreso`, `ingresos`, `recibí`, `gané`, `cobré`, `utilidades`, `honorarios`, `freelance`, `venta`, `pago recibido`.
+
+### Confirmación
+
+```
+✅ Ingreso #5 registrado:
+📅 Fecha: 2026-06-07
+👤 Recibido por: Aru
+📝 Concepto: Salario
+💰 Valor: $2,000,000
+```
+
+> 💡 Las **calculaciones de dinero real** (ingresos menos gastos) vienen en una versión futura. Por ahora solo se registra la lista.
 
 ---
 
 ## Ver el balance del mes
 
-Escribe `Balance` para ver el resumen del mes actual. Puedes mencionar el mes que quieras.
-
-### Ejemplos
+Escribí `Balance` para ver el resumen del mes actual. Podés mencionar otro mes.
 
 | Lo que escribes | Resultado |
 |---|---|
 | `Balance` | Balance del mes actual |
 | `Balance de marzo` | Balance de marzo |
-| `Balance marzo` | Balance de marzo |
-| `Quiero ver el resumen de abril` | Balance de abril |
 | `Balance 03` | Balance de marzo |
+| `Quiero ver el resumen de abril` | Balance de abril |
 
 ### Qué muestra el balance
-
-El balance tiene dos secciones: **gastos compartidos** y **tus gastos personales**.
 
 ```
 📊 Resumen de Gastos — Mayo 📊
@@ -97,7 +171,9 @@ El balance tiene dos secciones: **gastos compartidos** y **tus gastos personales
     EDUCACIÓN: $20,000
 ```
 
-**Privacidad:** Cada uno ve solo sus gastos personales. Los gastos compartidos los ven ambos. La deuda se calcula únicamente sobre los gastos compartidos.
+**Privacidad:** cada uno ve solo sus gastos personales. Los compartidos los ven ambos. La deuda se calcula solo sobre los compartidos.
+
+> ⚠️ Si no estás en una pareja, el bot te avisa que no podés ver balance (los ingresos y gastos personales sí funcionan).
 
 ---
 
@@ -113,73 +189,66 @@ Para ver tus últimos gastos con sus IDs (útil para editar o eliminar):
 | `/last` | Últimos 5 gastos |
 | `/last 15` | Últimos 15 gastos |
 
-El bot muestra una lista con el ID, categoría, concepto, valor, quién pagó y fecha de cada gasto.
-
 ---
 
-## Editar un gasto
+## Editar un gasto o ingreso
 
-Si te equivocaste al registrar un gasto, puedes corregirlo indicando el ID y lo que quieres cambiar.
+Si te equivocaste, podés corregirlo indicando el ID y lo que querés cambiar.
 
 ### Cómo saber el ID
 
-- El ID aparece en la confirmación cuando registras un gasto (ej. `Gasto #42 registrado`)
-- También puedes ver tus últimos gastos con `últimos gastos` o `/last`
+- Aparece en la confirmación cuando registrás un gasto o ingreso (ej. `Gasto #42 registrado`).
+- También podés verlos con `últimos gastos` o `/last`.
 
-### Ejemplos
+### Ejemplos para gastos
 
 | Lo que escribes | Resultado |
 |---|---|
 | `editar gasto 42, era compartido` | Marca el gasto #42 como compartido |
-| `gasto 42, el valor era 25000` | Cambia el valor del gasto #42 a $25,000 |
-| `corregir gasto 38, pagó Mon` | Cambia quién pagó el gasto #38 a Mon |
+| `gasto 42, el valor era 25000` | Cambia el valor a $25.000 |
+| `corregir gasto 38, pagó Mon` | Cambia quién pagó a Mon |
 | `editar gasto 42, concepto verduras del mercado, compartida` | Cambia concepto y marca como compartido |
 
-### Campos editables
-
-Puedes cambiar: **valor**, **concepto**, **fecha**, **compartida**, **quien_pago**, **categoría**, **subcategoría**.
-
-Solo menciona los campos que quieres cambiar — los demás se mantienen.
-
-### Qué pasa después
-
-- Si cambias el valor, quién pagó, o si es compartido, el bot recalcula automáticamente la deuda.
-- **Ambos** reciben la confirmación con los datos actualizados.
-
----
-
-## Eliminar un gasto
-
-Puedes eliminar un gasto indicando el ID.
-
-### Ejemplos
+### Ejemplos para ingresos
 
 | Lo que escribes | Resultado |
 |---|---|
-| `eliminar gasto 42` | Pide confirmación antes de eliminar |
-| `borrar gasto 38` | Pide confirmación antes de eliminar |
+| `editar ingreso 7, el valor era 2500000` | Cambia el valor del ingreso a $2.500.000 |
+| `corregir ingreso 7, concepto Salario quincena` | Cambia el concepto |
 
-El bot te muestra el gasto y te pide confirmar con dos botones: **Sí, eliminar** o **No**.
+### Campos editables
 
-**Ambos** reciben notificación cuando un gasto es eliminado.
+- **Gastos:** valor, concepto, fecha, compartida, quien_pago, categoría, subcategoría
+- **Ingresos:** valor, concepto, fecha
+
+Solo mencioná los campos que querés cambiar — los demás se mantienen.
+
+### Qué pasa después
+
+- Si cambiás el valor, quién pagó, o si es compartido, el bot recalcula la deuda.
+- Si el gasto es compartido, **ambos** reciben la confirmación con los datos actualizados.
+- Los ingresos son personales — solo vos recibís la confirmación.
 
 ---
 
-## Hablar con el bot
+## Eliminar un gasto o ingreso
 
-El bot no solo registra gastos — también conversa.
+Indicá el ID y el tipo:
 
-- **Saluda:** `hola`, `buenas`, `buenos días` — el bot te responde de forma amigable.
-- **Pregúntale qué puede hacer:** `¿qué puedes hacer?` — te explica sus funciones.
-- **Conversa:** Si mandas algo que no es un gasto ni una consulta de balance, el bot te responde de forma natural y te recuerda cómo puede ayudarte.
+| Lo que escribes | Resultado |
+|---|---|
+| `eliminar gasto 42` | Elimina el gasto #42 |
+| `borrar gasto 38` | Elimina el gasto #38 |
+| `eliminar ingreso 7` | Elimina el ingreso #7 |
+| `borrar el ingreso 12` | Elimina el ingreso #12 |
 
-No necesitas ser formal. El bot entiende lenguaje natural en español.
+> Si el gasto era compartido, **ambos** reciben una notificación de la eliminación.
 
 ---
 
 ## Cambiar el porcentaje de gastos compartidos
 
-Puedes cambiarlos escribiendo de forma natural o usando el comando `/split`.
+Podés cambiarlo escribiendo de forma natural o usando el comando `/split`.
 
 ### Ejemplos conversacionales
 
@@ -205,21 +274,129 @@ El primer número es el porcentaje de Aru, el segundo el de Mon. Deben sumar 100
 
 ---
 
-## Acceder al dashboard
+## Salir de la pareja
 
-El dashboard web se autentica con tu email y contraseña.
+Si querés terminar la pareja financiera actual, podés hacerlo desde el **dashboard** (botón "Salir de la pareja" en `/couple/manage`) o escribí en el bot algo como `quiero salir de la pareja`. El bot te guiará.
 
-### Cómo acceder
-
-1. Abre el dashboard en el navegador.
-2. Ingresa tu email y contraseña.
-3. Listo — ya puedes ver y gestionar tus gastos.
-
-Si no tienes cuenta, regístrate desde el dashboard. Si ya tienes cuenta pero usas el bot de Telegram, vincula tu cuenta con `/link <email>` en el bot.
+**Importante:**
+- Al salir, **ambos** quedan marcados como salidos — la pareja se vuelve histórica inmediatamente.
+- Tu pareja recibe una notificación por Telegram.
+- Los gastos de esa pareja siguen visibles en el dashboard bajo "Parejas anteriores".
+- Después podés crear o unirte a una nueva pareja.
 
 ---
 
-## Categorías disponibles
+## Conversar con el bot
+
+El bot no solo registra gastos — también conversa.
+
+- **Saluda:** `hola`, `buenas`, `buenos días` — responde con amabilidad.
+- **Preguntale qué puede hacer:** `¿qué puedes hacer?` — te explica sus funciones.
+- **Conversa:** si mandás algo que no es un gasto, ingreso, balance, edición o eliminación, el bot responde naturalmente y te recuerda sus funciones.
+
+No necesitás ser formal. El bot entiende lenguaje natural en español.
+
+---
+
+# Dashboard Web
+
+## Acceso
+
+1. Abrí el dashboard en el navegador.
+2. Ingresá tu email y contraseña.
+3. Listo — ya podés ver y gestionar tus finanzas.
+
+Si no tenés cuenta, hace clic en "Registrarse" desde la pantalla de login.
+
+---
+
+## Estado de cuenta
+
+El estado de tu cuenta se muestra siempre en un banner arriba de la barra de navegación:
+
+| Estado | Banner | Significado |
+|---|---|---|
+| **Trial** | 🟡 Amarillo: *"Modo de prueba — X días restantes"* | Primeros 30 días desde el registro. Acceso total. |
+| **Activo** | (sin banner) | Cuenta paga. Acceso total. |
+| **Suspendido** | 🟠 Coral: *"Tu cuenta está suspendida. Completa tu pago para continuar."* | Pago rechazado. El bot está bloqueado, pero podés ver tu dashboard en modo lectura. |
+
+> 💳 La integración de pagos (Wompi) se implementará en una versión futura. Por ahora el estado solo se puede cambiar manualmente desde la base de datos.
+
+---
+
+## Página de balance (`/balance`)
+
+Muestra el resumen del mes actual para tu pareja activa.
+
+- **Gastos compartidos** — quién pagó, total, deuda, desglose por categoría.
+- **Gastos personales** — tu total personal y desglose por categoría.
+- **Selector de mes** — elegí cualquier mes.
+- **Selector de pareja** (dropdown) — si tuviste parejas anteriores, podés ver el balance de cada una.
+
+---
+
+## Página de transacciones (`/expenses`)
+
+Lista unificada de gastos e ingresos del mes seleccionado.
+
+### Filtros
+
+Tres botones arriba a la derecha:
+
+- **Todos** — muestra gastos e ingresos juntos (default)
+- **Gastos** — solo gastos
+- **Ingresos** — solo ingresos
+
+### Tarjetas de resumen
+
+Cuatro tarjetas arriba de la lista:
+
+- **Total gastos** — suma de todos los gastos del mes
+- **Total ingresos** — suma de todos los ingresos (en verde)
+- **Gastos compartidos** — cantidad de gastos marcados como compartidos
+- **Gastos personales** — cantidad de gastos no compartidos
+
+### Edición de gastos
+
+- Click en el ícono de editar de una fila para abrir el modal de edición.
+- Podés cambiar: fecha, valor, concepto, categoría, quién pagó, compartida.
+- El modal tiene un botón para **eliminar** el gasto (con confirmación).
+
+### Ingresos
+
+- Los ingresos se muestran en verde con un signo `+` adelante.
+- Por ahora son de **solo lectura** en el dashboard — para editarlos o eliminarlos, usá el bot.
+
+### Modo lectura
+
+Si tu cuenta está **suspendida**:
+- No podés editar ni eliminar gastos.
+- El botón "Salir de la pareja" también está deshabilitado.
+- Todo lo demás se puede ver normalmente.
+
+---
+
+## Gestión de pareja (`/couple/manage`)
+
+- **Pareja actual** — si tenés, muestra el nombre de tu pareja, el total gastado juntos, y un botón **"Salir de la pareja"** (con confirmación).
+- **Parejas anteriores** — si tuviste parejas previas, aparecen como tarjetas con el nombre de la ex-pareja, fechas y total gastado. Click en una para ver sus gastos.
+
+---
+
+## Parejas anteriores (`/couple/[id]/expenses`)
+
+Vista de solo lectura de todos los gastos de una pareja anterior. Tiene selector de mes para filtrar.
+
+---
+
+## Invitar pareja (`/invite`)
+
+- Si no tenés pareja activa, esta página te muestra el **código de invitación** para crear una nueva pareja.
+- Después de salir de una pareja, esta página te da orientación para empezar de nuevo.
+
+---
+
+# Categorías de gastos
 
 El bot asigna automáticamente una categoría y subcategoría a cada gasto.
 
@@ -235,37 +412,64 @@ El bot asigna automáticamente una categoría y subcategoría a cada gasto.
 | AHORRO/INVERSIÓN | Ahorro Pareja |
 | IMPREVISTOS | Obsequios, Otros |
 
----
-
-## Mensajes de error y qué hacer
-
-| Mensaje del bot | Qué significa | Qué hacer |
-|---|---|---|
-| *"Hola. Para registrar un gasto, envía el concepto y el valor..."* | El bot no encontró un concepto y un valor en el mensaje | Incluye ambos, ej. `cine 30000` |
-| *"No hay gastos registrados para ese mes."* | No hay datos en ese mes | Verifica que hayas registrado gastos en ese mes |
-| *"Los porcentajes deben sumar 100."* | Los dos números del split no suman 100 | Ej. `/split 65 35` ✓ — `/split 60 50` ✗ |
-| *"No entendí bien los porcentajes."* | El bot detectó que querías cambiar el split pero no pudo extraer los números | Sé más explícito, ej. `split 65 para Aru y 35 para Mon` |
-| *"Gasto #42 no encontrado"* | El ID que mencionaste no existe | Verifica el ID con `últimos gastos` o `/last` |
+Los ingresos **no tienen categorías** — solo concepto, valor y fecha.
 
 ---
 
-## Acceso
+# Cómo se divide un gasto compartido
 
-El bot solo responde a usuarios registrados. Cualquier otro usuario recibe un mensaje indicando que debe vincular su cuenta con `/link <email>`.
+Por defecto:
+- Si **Aru** pagó → Mon le debe el **37%**
+- Si **Mon** pagó → Aru le debe el **63%**
+
+Este porcentaje se cambia con `/split` o en lenguaje natural (ver arriba). Aplica solo a gastos nuevos.
 
 ---
 
-## Resumen de comandos
+# Resumen de comandos
+
+## Bot de Telegram
 
 | Acción | Cómo hacerlo |
 |---|---|
-| Registrar un gasto | Escribe concepto + valor (ej. `cine 30000`) |
-| Registrar gasto compartido | Escribe `compartida` o `juntos` en el mensaje (ej. `cine 30000 compartida`) |
+| Ver bienvenida | `/start` |
+| Vincular cuenta | `/link email@ejemplo.com` |
+| Registrar gasto | `concepto valor` (ej. `cine 30000`) |
+| Gasto compartido | Agregar `compartida` al mensaje |
+| Registrar ingreso | Incluir palabra clave + valor (ej. `Salario 2000000`) |
 | Ver balance del mes | `Balance` |
-| Ver balance de otro mes | `Balance marzo` / `Balance de abril` |
+| Balance de otro mes | `Balance marzo` o `Balance de abril` |
 | Ver últimos gastos | `últimos gastos` o `/last` |
-| Editar un gasto | `editar gasto 42, era compartido` |
-| Eliminar un gasto | `eliminar gasto 42` |
-| Cambiar el porcentaje | `Cambia el split a 70 para Aru y 30 para Mon` o `/split 70 30` |
-| Ver mensaje de bienvenida | `/start` |
-| Vincular cuenta de Telegram | `/link email@ejemplo.com` |
+| Editar gasto | `editar gasto 42, era compartido` |
+| Editar ingreso | `editar ingreso 7, el valor era 2500000` |
+| Eliminar gasto | `eliminar gasto 42` |
+| Eliminar ingreso | `borrar ingreso 7` |
+| Cambiar porcentaje | `Cambia el split a 70 para Aru y 30 para Mon` o `/split 70 30` |
+| Salir de la pareja | `quiero salir de la pareja` (o desde el dashboard) |
+
+## Dashboard Web
+
+| Acción | Dónde |
+|---|---|
+| Ver balance del mes | `/balance` |
+| Ver y editar transacciones | `/expenses` |
+| Gestionar pareja | `/couple/manage` |
+| Ver gastos de pareja anterior | `/couple/[id]/expenses` |
+| Invitar o crear pareja | `/invite` |
+| Ver estado de cuenta | Banner en la barra superior |
+
+---
+
+# Mensajes de error
+
+| Mensaje del bot | Qué significa | Qué hacer |
+|---|---|---|
+| *"Tu cuenta está suspendida. Completa tu pago para continuar."* | Tu cuenta fue suspendida (pago rechazado) | Actualizá tu método de pago |
+| *"Para registrar un gasto, envía el concepto y el valor..."* | El bot no encontró un concepto y un valor | Incluí ambos, ej. `cine 30000` |
+| *"Para registrar un ingreso, envialo con un monto..."* | El bot no encontró un valor en el ingreso | Incluí un número, ej. `Salario 2000000` |
+| *"No hay gastos registrados para ese mes."* | No hay datos en ese mes | Verificá que hayas registrado gastos en ese mes |
+| *"Los porcentajes deben sumar 100."* | Los dos números del split no suman 100 | Usá `/split 65 35` (suma 100) |
+| *"No entendí bien los porcentajes."* | El bot detectó que querías cambiar el split pero no pudo extraer los números | Sé más explícito, ej. `split 65 para Aru y 35 para Mon` |
+| *"Gasto #42 no encontrado"* | El ID que mencionaste no existe | Verificá el ID con `últimos gastos` o `/last` |
+| *"No tenés pareja. Creá una desde la web para..."* | Intentaste hacer algo que requiere pareja (balance, gasto compartido) | Creá o unite a una pareja desde `/invite` |
+| *"Ya estás vinculado como X."* | Intentaste vincular dos veces | No necesitás volver a vincular |
