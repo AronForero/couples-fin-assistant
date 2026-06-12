@@ -17,6 +17,7 @@ No hay formularios complicados, ni menús. Escribes como hablarías y el bot ent
    - [Registrar un gasto](#registrar-un-gasto)
    - [Registrar un ingreso](#registrar-un-ingreso)
    - [Ver el balance del mes](#ver-el-balance-del-mes)
+   - [Ver tu dinero real](#ver-tu-dinero-real)
    - [Ver gastos recientes](#ver-gastos-recientes)
    - [Editar un gasto o ingreso](#editar-un-gasto-o-ingreso)
    - [Eliminar un gasto o ingreso](#eliminar-un-gasto-o-ingreso)
@@ -177,6 +178,60 @@ Escribí `Balance` para ver el resumen del mes actual. Podés mencionar otro mes
 
 ---
 
+## Ver tu dinero real
+
+A diferencia del balance (que muestra deuda y gastos compartidos), esta vista te dice **cuánto dinero te queda realmente**: tus ingresos menos tus gastos personales menos tu parte de los gastos compartidos.
+
+### Ejemplos conversacionales
+
+| Lo que escribes | Resultado |
+|---|---|
+| `¿Cuánto tengo?` | Tu dinero real del mes actual |
+| `cuánto dinero tengo` | Tu dinero real del mes actual |
+| `mi dinero` | Tu dinero real del mes actual |
+| `cuánto me queda` | Tu dinero real del mes actual |
+| `dinero real` | Tu dinero real del mes actual |
+| `¿Cuánto tengo en marzo?` | Tu dinero real de marzo |
+
+### Cómo se calcula
+
+```
+tu_dinero_real = ingresos
+              − gastos_personales
+              − (tu_porcentaje × gastos_compartidos)
+```
+
+**Ejemplo:**
+- Tus ingresos del mes: $5.000.000
+- Tus gastos personales: $1.200.000
+- Gastos compartidos totales de la pareja: $1.000.000
+- Tu porcentaje de gastos compartidos: 37% (configurado por `/split`)
+
+Tu dinero real = $5.000.000 − $1.200.000 − $370.000 = **$3.430.000**
+
+### Respuesta del bot
+
+```
+💰 Tu dinero real — Junio 2026
+
+💵 Ingresos:           $5,000,000
+💸 Gastos personales:  $1,200,000
+🤝 Tu parte de compartidos (37%): $370,000
+   (Total gastos compartidos: $1,000,000)
+
+🟢 Te quedan: $3,430,000
+```
+
+Si el número es negativo, se muestra en rojo con 🔴 y el texto *"Estás en negativo por ..."*.
+
+### Usuarios sin pareja
+
+Si no estás en una pareja, la fórmula se simplifica: `ingresos − gastos_personales`. No se muestra la sección de compartidos.
+
+> 💡 El selector de mes y año está en el dashboard. En el bot v1 solo se puede consultar el mes actual (soporte para rangos personalizados viene en una versión futura).
+
+---
+
 ## Ver gastos recientes
 
 Para ver tus últimos gastos con sus IDs (útil para editar o eliminar):
@@ -328,9 +383,10 @@ El estado de tu cuenta se muestra siempre en un banner arriba de la barra de nav
 
 Muestra el resumen del mes actual para tu pareja activa.
 
+- **Tu dinero real** (arriba) — una tarjeta con tu dinero real del período: ingresos, gastos personales, tu parte de los compartidos, y el total que te queda. Selector de Mes o Año. Si tenés saldo negativo, se muestra en rojo.
 - **Gastos compartidos** — quién pagó, total, deuda, desglose por categoría.
 - **Gastos personales** — tu total personal y desglose por categoría.
-- **Selector de mes** — elegí cualquier mes.
+- **Selector de mes** — elegí cualquier mes. Cambia el balance y la tarjeta de dinero real juntos.
 - **Selector de pareja** (dropdown) — si tuviste parejas anteriores, podés ver el balance de cada una.
 
 ---
@@ -338,6 +394,10 @@ Muestra el resumen del mes actual para tu pareja activa.
 ## Página de transacciones (`/expenses`)
 
 Lista unificada de gastos e ingresos del mes seleccionado.
+
+### Tu dinero real (arriba)
+
+Una versión compacta de la tarjeta de dinero real (ingresos vs gastos) aparece arriba de la lista, sincronizada con el selector de mes.
 
 ### Filtros
 
@@ -439,6 +499,8 @@ Este porcentaje se cambia con `/split` o en lenguaje natural (ver arriba). Aplic
 | Registrar ingreso | Incluir palabra clave + valor (ej. `Salario 2000000`) |
 | Ver balance del mes | `Balance` |
 | Balance de otro mes | `Balance marzo` o `Balance de abril` |
+| Ver tu dinero real | `¿Cuánto tengo?` o `cuánto dinero tengo` o `mi dinero` |
+| Dinero real de otro mes | `¿Cuánto tengo en marzo?` |
 | Ver últimos gastos | `últimos gastos` o `/last` |
 | Editar gasto | `editar gasto 42, era compartido` |
 | Editar ingreso | `editar ingreso 7, el valor era 2500000` |
@@ -451,7 +513,7 @@ Este porcentaje se cambia con `/split` o en lenguaje natural (ver arriba). Aplic
 
 | Acción | Dónde |
 |---|---|
-| Ver balance del mes | `/balance` |
+| Ver balance del mes y tu dinero real | `/balance` |
 | Ver y editar transacciones | `/expenses` |
 | Gestionar pareja | `/couple/manage` |
 | Ver gastos de pareja anterior | `/couple/[id]/expenses` |

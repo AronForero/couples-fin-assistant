@@ -32,6 +32,21 @@ def get_incomes_by_month(year: int, month: int, user_id: int) -> list[dict]:
             return [dict(row) for row in cur.fetchall()]
 
 
+def get_incomes_by_date_range(user_id: int, start: str, end: str) -> list[dict]:
+    """Returns all incomes for a user between start and end (inclusive, YYYY-MM-DD)."""
+    sql = """
+        SELECT id, fecha, concepto, valor, user_id, created_at
+        FROM incomes
+        WHERE user_id = %s
+          AND fecha BETWEEN %s AND %s
+        ORDER BY fecha, id
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (user_id, start, end))
+            return [dict(row) for row in cur.fetchall()]
+
+
 def get_recent_incomes(limit: int, user_id: int) -> list[dict]:
     sql = """
         SELECT id, fecha, concepto, valor, user_id, created_at

@@ -126,6 +126,55 @@ def compute_balance(
     }
 
 
+def compute_actual_money(
+    user: dict,
+    incomes: list[dict],
+    expenses: list[dict],
+    splits: dict[int, float] | None,
+) -> dict:
+    """Compute user's actual money = income - personal expenses - share of shared.
+
+    Args:
+        user: the user dict (must have 'id' and optionally 'couple_id')
+        incomes: list of income dicts for this user in the period
+        expenses: list of expense dicts (all from the user's couple if any) in the period
+        splits: {user_id: split_percentage} from get_split_for_couple, or None for solo users
+
+    Returns dict with totals and the period.
+    """
+    user_id = user["id"]
+
+    total_income = sum(int(i["valor"]) for i in incomes)
+
+    personal_expenses = 0
+    shared_total = 0
+
+    for e in expenses:
+        valor = int(e["valor"])
+        if e.get("compartida") == "Si":
+            shared_total += valor
+        elif e.get("quien_pago_id") == user_id:
+            personal_expenses += valor
+
+    if splits and user_id in splits:
+        split_pct = float(splits[user_id])
+    else:
+        split_pct = 0.50
+
+    shared_my_share = round(shared_total * split_pct)
+
+    actual_money = total_income - personal_expenses - shared_my_share
+
+    return {
+        "total_income": total_income,
+        "personal_expenses": personal_expenses,
+        "shared_expenses_my_share": shared_my_share,
+        "shared_expenses_total": shared_total,
+        "actual_money": actual_money,
+        "split_percentage": split_pct,
+    }
+
+
 # ── Legacy wrappers (temporary, for old callers during transition) ────────────
 
 def compute_split_legacy(expense: dict, split_aru: float, split_mon: float) -> dict:

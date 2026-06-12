@@ -19,6 +19,7 @@ from handlers.recent import handle_recent
 from handlers.edit import handle_edit
 from handlers.delete import handle_delete
 from handlers.link import handle_link
+from handlers.actual_money import handle_actual_money
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -64,6 +65,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "• *Registrar un gasto:* 'cine 30000' o 'Mon pagó supermercado 50000'\n"
             "• *Registrar un ingreso:* 'Salario 2000000' o 'Ingreso freelance 1500000'\n"
             "• *Ver el balance:* 'Balance' o 'Balance de marzo'\n"
+            "• *Ver tu dinero real:* '¿Cuánto tengo?' o '¿Cuánto me queda?'\n"
             "• *Cambiar el porcentaje:* 'Cambia el split a 65 para Aru y 35 para Mon'\n"
             "• O usa el comando */split 65 35* si prefieres"
         )
@@ -131,6 +133,13 @@ async def dispatch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     elif intent == "income":
         await handle_income(update, context)
+
+    elif intent == "actual_money":
+        await handle_actual_money(
+            update, context,
+            year=params.get("year"),
+            month=params.get("month"),
+        )
 
     else:
         await handle_expense(update, context)

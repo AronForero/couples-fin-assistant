@@ -179,6 +179,47 @@ Income rows are highlighted in green with a "+" sign so you can spot them at a g
 
 ---
 
+## Tracking Your Actual Money
+
+Once you have both incomes and expenses, the natural question is *"how much money do I actually have?"* That's what **Tu dinero real** answers: `ingresos − gastos personales − tu parte de los gastos compartidos`.
+
+### From the bot
+
+Ask conversationally:
+
+```
+¿Cuánto tengo?
+Cuánto dinero tengo
+Mi dinero
+¿Cuánto me queda?
+Dinero real
+```
+
+By default it shows the current month. You can specify a month by name: *"¿Cuánto tengo en marzo?"*
+
+The bot replies with a breakdown:
+
+```
+💰 Tu dinero real — Junio 2026
+
+💵 Ingresos:           $5,000,000
+💸 Gastos personales:  $1,200,000
+🤝 Tu parte de compartidos (37%): $370,000
+   (Total gastos compartidos: $1,000,000)
+
+🟢 Te quedan: $3,430,000
+```
+
+If you don't have a partner, the shared-expense lines are hidden and the formula simplifies to `ingresos − gastos personales`.
+
+### From the dashboard
+
+A **Tu dinero real** card appears at the top of both the `/balance` and `/expenses` pages. Use the **Mes / Año** toggle inside the card to switch between a single month and a full year. The card updates together with the rest of the page when you change periods. If you go negative, the number is shown in red.
+
+> 💡 Range support (custom periods like "últimos 3 meses") is on the dashboard via the Mes / Año toggle. Natural-language range support in the bot is coming in a later version.
+
+---
+
 ## Project Structure
 
 ```
@@ -196,6 +237,7 @@ finduo/
 │   ├── expense.py          # AddExpense flow
 │   ├── income.py           # AddIncome flow (V7)
 │   ├── balance.py          # Balance + sheet export callback
+│   ├── actual_money.py     # Actual money query handler (V8)
 │   ├── recent.py           # Recent expenses list
 │   ├── edit.py             # Edit expense or income (V7)
 │   ├── delete.py           # Delete expense or income (V7)
@@ -362,5 +404,6 @@ Month is derived at query time (`EXTRACT(MONTH FROM fecha)`), not stored separat
 | **V5** | Couple lifecycle — leave couple, view history, expenses linked to specific couples | ✅ |
 | **V6** | User account status — 30-day trial, active, suspended; bot blocked when suspended; dashboard read-only | ✅ |
 | **V7** | Income feature — record salary, freelance, etc. via bot; dashboard filter for expenses vs incomes | ✅ |
+| **V8** | Actual money calculation — `ingresos − gastos personales − tu parte de compartidos`. Available on dashboard cards (`/balance`, `/expenses`) and as a bot conversation query. Single month or full year, with range support on the dashboard. | ✅ |
 
 See the `version/` directory for detailed specs of each version.

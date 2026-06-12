@@ -25,6 +25,7 @@ from .couples import (
 from .expenses import (
     delete_expense,
     get_expense_by_id,
+    get_expenses_by_date_range,
     get_expenses_by_month,
     get_expenses_by_month_and_users,
     get_recent_expenses,
@@ -34,6 +35,7 @@ from .expenses import (
 from .incomes import (
     delete_income,
     get_income_by_id,
+    get_incomes_by_date_range,
     get_incomes_by_month,
     get_recent_incomes,
     insert_income,
@@ -67,9 +69,11 @@ __all__ = [
     "get_couple_expenses",
     "get_couple_users",
     "get_expense_by_id",
+    "get_expenses_by_date_range",
     "get_expenses_by_month",
     "get_expenses_by_month_and_users",
     "get_income_by_id",
+    "get_incomes_by_date_range",
     "get_incomes_by_month",
     "get_partner",
     "get_recent_expenses",

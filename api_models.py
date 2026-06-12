@@ -54,6 +54,16 @@ class IncomeResponse(BaseModel):
     created_at: str
 
 
+class ActualMoneyResponse(BaseModel):
+    total_income: int
+    personal_expenses: int
+    shared_expenses_my_share: int
+    shared_expenses_total: int
+    actual_money: int
+    split_percentage: float
+    period: dict
+
+
 class PersonalBalance(BaseModel):
     viewer_id: int
     viewer_name: str

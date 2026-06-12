@@ -467,6 +467,58 @@ def delete_income(
     return {"deleted": True, "id": income_id}
 
 
+# ── Actual Money Endpoint ─────────────────────────────────────────────────────
+
+@app.get("/api/actual-money", response_model=api_models.ActualMoneyResponse)
+def get_actual_money(
+    year: int = Query(None),
+    month: int = Query(None),
+    start: str = Query(None),
+    end: str = Query(None),
+    user: dict = Depends(api_auth.get_current_user),
+):
+    """Return the user's actual money over a period.
+
+    Resolution priority:
+      1. start + end explicit dates
+      2. year + month single month
+      3. year only (full year)
+      4. nothing (current month: first of month → today)
+    """
+    from datetime import date, datetime
+    import calendar
+
+    today = date.today()
+
+    if start and end:
+        period_start = start
+        period_end = end
+    elif year and month:
+        first = date(year, month, 1)
+        last_day = calendar.monthrange(year, month)[1]
+        period_start = first.isoformat()
+        period_end = date(year, month, last_day).isoformat()
+    elif year:
+        period_start = date(year, 1, 1).isoformat()
+        period_end = date(year, 12, 31).isoformat()
+    else:
+        period_start = today.replace(day=1).isoformat()
+        period_end = today.isoformat()
+
+    incomes = database.get_incomes_by_date_range(user["id"], period_start, period_end)
+
+    splits = None
+    if user.get("couple_id"):
+        expenses = database.get_expenses_by_date_range(user["couple_id"], period_start, period_end)
+        splits = database.get_split_for_couple(user["couple_id"])
+    else:
+        expenses = []
+
+    result = finance.compute_actual_money(user, incomes, expenses, splits)
+    result["period"] = {"start": period_start, "end": period_end}
+    return result
+
+
 # ── Balance & Settings ────────────────────────────────────────────────────────
 
 @app.get("/api/balance", response_model=api_models.BalanceResponse)

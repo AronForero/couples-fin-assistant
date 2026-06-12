@@ -62,6 +62,24 @@ def get_expenses_by_month_and_users(year: int, month: int, user_ids: list[int], 
             return [dict(row) for row in cur.fetchall()]
 
 
+def get_expenses_by_date_range(couple_id: int, start: str, end: str) -> list[dict]:
+    """Returns all expenses for a couple between start and end (inclusive, YYYY-MM-DD)."""
+    sql = """
+        SELECT e.id, e.fecha, u.display_name AS quien_pago, e.subcategoria, e.categoria,
+               e.concepto, e.valor, e.compartida, e.valor_a_pagar,
+               e.quien_pago_id, e.debt_user_id, e.couple_id
+        FROM expenses e
+        LEFT JOIN users u ON u.id = e.quien_pago_id
+        WHERE e.couple_id = %s
+          AND e.fecha BETWEEN %s AND %s
+        ORDER BY e.fecha, e.id
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (couple_id, start, end))
+            return [dict(row) for row in cur.fetchall()]
+
+
 def get_expense_by_id(expense_id: int) -> dict | None:
     sql = """
         SELECT e.id, e.fecha, u.display_name AS quien_pago, e.subcategoria, e.categoria,

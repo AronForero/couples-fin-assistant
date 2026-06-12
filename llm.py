@@ -17,7 +17,7 @@ _CATEGORIES_TEXT = "\n".join(
 def _build_classifier_system(user1: str, user2: str) -> str:
     return f"""You are an intent classifier for a personal finance Telegram bot used by two people: {user1} and {user2}.
 
-Classify the user message into exactly one of eight intents and extract any parameters. Return ONLY a JSON object — no explanation.
+Classify the user message into exactly one of nine intents and extract any parameters. Return ONLY a JSON object — no explanation.
 
 Intents:
 1. "balance" — user wants to see their expense summary for a month.
@@ -32,7 +32,7 @@ Intents:
 3. "expense" — registering a purchase or expense. The message must contain both a concept and a numeric value/amount.
    Params: {{}}
 
-4. "chat" — greetings, casual conversation, questions about the bot, jokes, compliments, thanks, or any message that is clearly NOT an expense, income, balance query, or split change.
+4. "chat" — greetings, casual conversation, questions about the bot, jokes, compliments, thanks, or any message that is clearly NOT an expense, income, balance, actual_money, or split change.
    Params: {{}}
 
 5. "recent" — user wants to see their recent/latest expenses. Triggered by "últimos gastos", "gastos recientes", "historial", "mis gastos", "ver gastos", etc.
@@ -48,12 +48,18 @@ Intents:
    Triggered by keywords: "salario", "ingreso", "ingresos", "recibí", "gané", "cobré", "utilidades", "honorarios", "freelance", "venta", "pago recibido", or the format "ingreso <concepto>: <valor>".
    Params: {{}}
 
+9. "actual_money" — user wants to know how much money they have (income minus expenses, accounting for shared expenses).
+   Triggered by: "cuánto tengo", "cuánto dinero tengo", "mi dinero", "dinero real", "cuánto me queda", "balance real", "cuánto llevo", "cuánto tengo en el mes".
+   Params: {{"year": <int>|null, "month": <int>|null}}
+   If no year/month is mentioned, leave both null (will default to current month).
+
 Rules:
 - "expense" requires a numeric amount. A message like "cine" without a number is "chat".
 - "income" requires a numeric amount AND an income keyword/indicator. A message like "salario" without a number is "chat".
 - When in doubt between "expense" and "income", the presence of an income keyword decides.
 - When in doubt between "expense" and "chat", choose "chat".
 - When in doubt between "income" and "chat", choose "chat".
+- When in doubt between "actual_money" and "balance", choose "actual_money" if the user uses words like "tengo", "me queda", "mi dinero", or "dinero real"; otherwise "balance".
 - "edit" and "delete" require an ID number. If no ID is present, treat as "chat".
 - "edit" keywords: "editar", "corregir", "modificar", "cambia el gasto", "el gasto X era/era en realidad", "el ingreso X era".
 - "delete" keywords: "eliminar", "borrar", "quitar", "quita el gasto", "quita el ingreso".
@@ -66,7 +72,9 @@ Return format examples:
 {{"intent": "recent", "params": {{"limit": 5}}}}
 {{"intent": "edit", "params": {{"id": 42}}}}
 {{"intent": "delete", "params": {{"id": 42}}}}
-{{"intent": "income", "params": {{}}}}"""
+{{"intent": "income", "params": {{}}}}
+{{"intent": "actual_money", "params": {{"year": 2026, "month": 4}}}}
+{{"intent": "actual_money", "params": {{"year": null, "month": null}}}}"""
 
 
 def _build_expense_system(user1: str, user2: str, categories_text: str) -> str:
@@ -207,7 +215,7 @@ def _chat_text(system: str, user: str, max_tokens: int = 150) -> str:
 
 def classify_intent(text: str, sender: str, date_str: str, user_names: tuple[str, str]) -> dict:
     """
-    Returns {"intent": "balance"|"split_change"|"expense"|"chat"|"recent"|"edit"|"delete"|"income", "params": {...}}.
+    Returns {"intent": "balance"|"split_change"|"expense"|"chat"|"recent"|"edit"|"delete"|"income"|"actual_money", "params": {...}}.
     Falls back to expense intent on any error.
     """
     system = _build_classifier_system(user_names[0], user_names[1])
@@ -216,7 +224,7 @@ def classify_intent(text: str, sender: str, date_str: str, user_names: tuple[str
         data = _chat_json(system, user_msg)
         intent = data.get("intent", "expense")
         params = data.get("params", {})
-        if intent not in {"balance", "split_change", "expense", "chat", "recent", "edit", "delete", "income"}:
+        if intent not in {"balance", "split_change", "expense", "chat", "recent", "edit", "delete", "income", "actual_money"}:
             intent = "expense"
         return {"intent": intent, "params": params}
     except Exception:
