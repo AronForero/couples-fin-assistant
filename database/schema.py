@@ -101,3 +101,25 @@ BEGIN
     END IF;
 END$$;
 """
+
+ADD_UPDATE_ID_TO_EXPENSES = """
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='expenses' AND column_name='update_id') THEN
+        ALTER TABLE expenses ADD COLUMN update_id BIGINT;
+        CREATE UNIQUE INDEX idx_expenses_update_id ON expenses (update_id) WHERE update_id IS NOT NULL;
+    END IF;
+END$$;
+"""
+
+ADD_UPDATE_ID_TO_INCOMES = """
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='incomes' AND column_name='update_id') THEN
+        ALTER TABLE incomes ADD COLUMN update_id BIGINT;
+        CREATE UNIQUE INDEX idx_incomes_update_id ON incomes (update_id) WHERE update_id IS NOT NULL;
+    END IF;
+END$$;
+"""

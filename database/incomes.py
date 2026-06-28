@@ -4,13 +4,29 @@ from .connection import get_conn
 
 
 def insert_income(income: dict) -> int:
-    sql = """
-        INSERT INTO incomes (fecha, concepto, valor, user_id)
-        VALUES (%(fecha)s, %(concepto)s, %(valor)s, %(user_id)s)
-        RETURNING id
-    """
+    """Insert an income.  If ``income['update_id']`` is set and a row
+    with that update_id already exists, return the existing row's id
+    instead of inserting a duplicate (idempotency for crash-recovery)."""
+    income.setdefault("update_id", None)
+    update_id = income["update_id"]
+
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # Idempotency check
+            if update_id is not None:
+                cur.execute(
+                    "SELECT id FROM incomes WHERE update_id = %s",
+                    (update_id,),
+                )
+                existing = cur.fetchone()
+                if existing:
+                    return existing[0]
+
+            sql = """
+                INSERT INTO incomes (fecha, concepto, valor, user_id, update_id)
+                VALUES (%(fecha)s, %(concepto)s, %(valor)s, %(user_id)s, %(update_id)s)
+                RETURNING id
+            """
             cur.execute(sql, income)
             row_id = cur.fetchone()[0]
         conn.commit()

@@ -129,7 +129,7 @@ async def dispatch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await handle_edit(update, context)
 
     elif intent == "delete":
-        await handle_delete(update, context)
+        await handle_delete(update, context, target_id=params.get("id"))
 
     elif intent == "income":
         await handle_income(update, context)
@@ -157,7 +157,7 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dispatch))
 
     logger.info("Bot starting (polling)…")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling()
 
 
 if __name__ == "__main__":

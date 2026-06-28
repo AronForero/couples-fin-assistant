@@ -4,6 +4,8 @@ from .connection import get_conn
 from .schema import (
     ADD_COUPLE_ID_TO_EXPENSES,
     ADD_LEFT_AT_TO_COUPLE_SETTINGS,
+    ADD_UPDATE_ID_TO_EXPENSES,
+    ADD_UPDATE_ID_TO_INCOMES,
     CREATE_COUPLE_SETTINGS,
     CREATE_COUPLES,
     CREATE_EXPENSES,
@@ -36,14 +38,14 @@ def _seed_default_couple(cur) -> tuple[int, int, int] | None:
     cur.execute(
         """INSERT INTO users (email, password_hash, display_name, couple_id, chat_id)
            VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-        ("aru@finduo.local", "$2b$12$ePVXcjHHhzQ8rGJJsgRdYOj8VAC/EA5KziO40pUGQ0VkjdDNIe1gK", "Aru", couple_id, 247795192),
+        ("foreroo965@gmail.com", "$2b$12$ePVXcjHHhzQ8rGJJsgRdYOj8VAC/EA5KziO40pUGQ0VkjdDNIe1gK", "Aru", couple_id, 247795192),
     )
     aru_id = cur.fetchone()[0]
 
     cur.execute(
         """INSERT INTO users (email, password_hash, display_name, couple_id, chat_id)
            VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-        ("mon@finduo.local", "!", "Mon", couple_id, 1560352087),
+        ("moncava8@gmail.com", "$2b$12$ePVXcjHHhzQ8rGJJsgRdYOj8VAC/EA5KziO40pUGQ0VkjdDNIe1gK", "Mon", couple_id, 1560352087),
     )
     mon_id = cur.fetchone()[0]
 
@@ -77,6 +79,8 @@ def init_db():
             cur.execute(ADD_LEFT_AT_TO_COUPLE_SETTINGS)
             cur.execute(DROP_OLD_EXPENSE_COLUMNS)
             cur.execute(MIGRATE_USERS_STATUS)
+            cur.execute(ADD_UPDATE_ID_TO_EXPENSES)
+            cur.execute(ADD_UPDATE_ID_TO_INCOMES)
 
             _seed_default_couple(cur)
         conn.commit()

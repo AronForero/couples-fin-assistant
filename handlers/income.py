@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from telegram import Update
 from telegram.ext import ContextTypes
 import llm
@@ -18,6 +19,20 @@ _CONFIRM_TEMPLATE = (
     "📝 Concepto: {concepto}\n"
     "💰 Valor: ${valor:,}"
 )
+
+_DELAYED_THRESHOLD_SECONDS = 300  # 5 minutes
+
+
+def _delayed_note(update: Update) -> str:
+    """Return a prefix line if the message was sent more than 5 minutes ago."""
+    msg_date = update.message.date
+    if msg_date.tzinfo is None:
+        msg_date = msg_date.replace(tzinfo=timezone.utc)
+    delta = (datetime.now(timezone.utc) - msg_date).total_seconds()
+    if delta > _DELAYED_THRESHOLD_SECONDS:
+        sent_str = msg_date.strftime("%d/%m a las %H:%M")
+        return f"⏱️ Registrado con retraso (enviado el {sent_str})\n\n"
+    return ""
 
 
 async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -45,6 +60,7 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     income["user_id"] = user["id"]
+    income["update_id"] = update.update_id
 
     try:
         income["id"] = database.insert_income(income)
@@ -53,5 +69,5 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await msg.reply_text("Hubo un error al guardar el ingreso. Por favor intenta de nuevo.")
         return
 
-    confirm = _CONFIRM_TEMPLATE.format(**income)
+    confirm = _delayed_note(update) + _CONFIRM_TEMPLATE.format(**income)
     await msg.reply_text(confirm)

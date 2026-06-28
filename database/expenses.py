@@ -4,21 +4,40 @@ from .connection import get_conn
 
 
 def insert_expense(expense: dict) -> int:
-    sql = """
-        INSERT INTO expenses
-            (fecha, subcategoria, categoria, concepto,
-             valor, compartida, valor_a_pagar,
-             quien_pago_id, debt_user_id, couple_id)
-        VALUES
-            (%(fecha)s, %(subcategoria)s, %(categoria)s, %(concepto)s,
-             %(valor)s, %(compartida)s, %(valor_a_pagar)s,
-             %(quien_pago_id)s, %(debt_user_id)s, %(couple_id)s)
-        RETURNING id
-    """
+    """Insert an expense.  If ``expense['update_id']`` is set and a row
+    with that update_id already exists, return the existing row's id
+    instead of inserting a duplicate (idempotency for crash-recovery)."""
     expense.setdefault("quien_pago_id", None)
     expense.setdefault("debt_user_id", None)
+    expense.setdefault("update_id", None)
+
+    update_id = expense["update_id"]
+
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # Idempotency check: if this Telegram update_id was already
+            # processed, return the existing row instead of duplicating.
+            if update_id is not None:
+                cur.execute(
+                    "SELECT id FROM expenses WHERE update_id = %s",
+                    (update_id,),
+                )
+                existing = cur.fetchone()
+                if existing:
+                    return existing[0]
+
+            sql = """
+                INSERT INTO expenses
+                    (fecha, subcategoria, categoria, concepto,
+                     valor, compartida, valor_a_pagar,
+                     quien_pago_id, debt_user_id, couple_id, update_id)
+                VALUES
+                    (%(fecha)s, %(subcategoria)s, %(categoria)s, %(concepto)s,
+                     %(valor)s, %(compartida)s, %(valor_a_pagar)s,
+                     %(quien_pago_id)s, %(debt_user_id)s, %(couple_id)s,
+                     %(update_id)s)
+                RETURNING id
+            """
             cur.execute(sql, expense)
             row_id = cur.fetchone()[0]
         conn.commit()

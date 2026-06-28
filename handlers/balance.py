@@ -24,13 +24,20 @@ def _build_summary(bal: dict, users: dict[int, str]) -> str:
         "🏠 Compartidos:",
     ]
 
-    for uid, amount in shared["gastos_por_usuario"].items():
+    # Match the sort order used by finance.compute_balance
+    # ( gastos is ordered by sorted(users.keys()) ).
+    sorted_uids = sorted(users.keys())
+    gastos_list = shared["gastos"]
+    for uid, amount in zip(sorted_uids, gastos_list):
         name = users.get(uid, f"Usuario {uid}")
         lines.append(f"  {name} pagó: {_fmt(amount)}")
 
     lines.append(f"  Total:     {_fmt(shared['gastos_totales'])}")
     lines.append("")
-    lines.append(f"  ⚖️ {shared['balance_key']}: {_fmt(shared['deuda_total'])}")
+    if shared["deuda_total"] > 0:
+        lines.append(f"  ⚖️ {shared['balance_key']}: {_fmt(shared['deuda_total'])}")
+    else:
+        lines.append(f"  ⚖️ {shared['balance_key']}")
 
     shared_cats = shared["por_categoria"]
     has_shared_cats = any(v > 0 for v in shared_cats.values())

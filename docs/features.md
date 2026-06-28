@@ -172,6 +172,8 @@ Escribí `Balance` para ver el resumen del mes actual. Podés mencionar otro mes
     EDUCACIÓN: $20,000
 ```
 
+> Si no hay deuda entre ambos (`deuda_total` = 0), la línea ⚖️ muestra solo el mensaje (ej. `⚖️ Pagaron lo mismo`) sin el monto `$0`.
+
 **Privacidad:** cada uno ve solo sus gastos personales. Los compartidos los ven ambos. La deuda se calcula solo sobre los compartidos.
 
 > ⚠️ Si no estás en una pareja, el bot te avisa que no podés ver balance (los ingresos y gastos personales sí funcionan).
@@ -298,6 +300,8 @@ Indicá el ID y el tipo:
 | `borrar el ingreso 12` | Elimina el ingreso #12 |
 
 > Si el gasto era compartido, **ambos** reciben una notificación de la eliminación.
+>
+> Si el ID ya no existe (porque vos o tu pareja ya lo borraron), el bot te avisa que **no se pudo eliminar** en lugar de mostrar un mensaje de éxito engañoso.
 
 ---
 

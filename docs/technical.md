@@ -50,22 +50,37 @@ finduo/
 ├── api_auth.py             # JWT create/verify, get_current_user() dependency
 ├── api_models.py           # Pydantic request/response schemas
 ├── config.py               # Env vars, constants (IDs, categories, JWT secret)
-├── database.py             # PostgreSQL connection, table init, CRUD, get_split()
-├── finance.py              # compute_split(), compute_balance() — pure, no I/O
-├── llm.py                  # classify_intent(), parse_expense(), extract_month(), chat_reply(), parse_edit(), parse_delete()
+├── database/               # PostgreSQL layer — package with one module per concern
+│   ├── __init__.py         #   re-exports the public API (backward-compatible import as `database`)
+│   ├── connection.py       #   get_conn() — plain psycopg2.connect, no pool
+│   ├── schema.py           #   CREATE TABLE DDL + migration SQL
+│   ├── init.py             #   init_db() orchestration + seed split defaults
+│   ├── utils.py            #   generate_invite_code()
+│   ├── users.py            #   user CRUD, is_user_active, status updates
+│   ├── couples.py          #   couple lifecycle (create, join, leave, history)
+│   ├── couple_settings.py  #   split percentage CRUD per couple
+│   ├── expenses.py         #   expense CRUD (insert, get_by_id, update, delete, recent, by_month, by_date_range)
+│   └── incomes.py          #   income CRUD (mirrors expenses)
+├── finance.py              # compute_split(), compute_balance(), compute_actual_money() — pure, no I/O
+├── llm.py                  # classify_intent(), parse_expense(), parse_income(), extract_month(),
+│                           # chat_reply(), parse_edit(), parse_delete()
 ├── handlers/
 │   ├── expense.py          # handle_expense()
+│   ├── income.py           # handle_income()
 │   ├── balance.py          # handle_balance()
 │   ├── chat.py             # handle_chat() — greeting regex + LLM fallback
 │   ├── link.py             # handle_link() — /link command for Telegram account linking
 │   ├── recent.py           # handle_recent() — recent expenses with IDs
-│   ├── edit.py             # handle_edit() — edit expense by ID
-│   ├── delete.py           # handle_delete() — delete expense by ID with confirmation
+│   ├── edit.py             # handle_edit() — edit expense or income by ID
+│   ├── delete.py           # handle_delete() — delete expense or income by ID (logs every step,
+│   │                       #                    checks delete_*() return value, no second LLM call
+│   │                       #                    when classify_intent already extracted an id)
+│   ├── actual_money.py     # handle_actual_money() — "Tu dinero real" view
 │   └── settings.py         # apply_split(), handle_split_command()
 ├── credentials/            # gitignored — place service_account.json here (future use)
-├── docs/                   # This file + features.md
-├── version/                # MVP and version specs
-├── docker-compose.yml      # db + bot + api services
+├── docs/                   # This file + features.md + version specs
+├── docker-compose.yml      # db + bot + api services (dashboard service added from
+│                           # the dashboard repo's docker-compose.snippet.yml)
 ├── Dockerfile
 ├── requirements.txt
 ├── .env.example
@@ -86,13 +101,13 @@ Text message received
   Auth check ──── not in ALLOWED_USER_IDS ──▶ silently return
         │
         ▼
-  llm.classify_intent(text, sender, date_str)
+  llm.classify_intent(text, sender, date_str, user_names)
         │
         ├── {"intent": "balance",      "params": {"year": 2026, "month": 4}}
-        │       └──▶ handle_balance(year, month)
+        │       └──▶ handle_balance(year=2026, month=4)
         │
-        ├── {"intent": "split_change", "params": {"split_aru": 65.0, "split_mon": 35.0}}
-        │       └──▶ apply_split(pct_aru, pct_mon)
+        ├── {"intent": "split_change", "params": {"split_user1": 65.0, "split_user2": 35.0}}
+        │       └──▶ apply_split(pct_user1, pct_user2)
         │
         ├── {"intent": "chat",         "params": {}}
         │       └──▶ handle_chat()
@@ -100,19 +115,27 @@ Text message received
         │               └── otherwise → llm.chat_reply() (LLM fallback)
         │
         ├── {"intent": "recent",       "params": {"limit": 5}}
-        │       └──▶ handle_recent(limit)
+        │       └──▶ handle_recent(limit=5)
         │
         ├── {"intent": "edit",         "params": {"id": 42}}
         │       └──▶ handle_edit()
         │
         ├── {"intent": "delete",       "params": {"id": 42}}
-        │       └──▶ handle_delete()
+        │       └──▶ handle_delete(target_id=42)
+        │
+        ├── {"intent": "income",       "params": {}}
+        │       └──▶ handle_income()
+        │
+        ├── {"intent": "actual_money", "params": {"year": 2026, "month": 4}}
+        │       └──▶ handle_actual_money(year=2026, month=4)
         │
         └── {"intent": "expense",      "params": {}}
                 └──▶ handle_expense()
 ```
 
 `classify_intent` fails safely: any exception or unexpected output defaults to `"expense"`.
+
+The `"delete"` intent passes the extracted `id` directly to `handle_delete` via the `target_id` parameter — no second LLM call is made. The `"edit"` handler still re-parses the message via `llm.parse_edit()` (it needs the field changes from the user text, not just the id).
 
 Commands bypass `dispatch()` and are handled directly:
 - `/start` → welcome message
@@ -124,27 +147,32 @@ Commands bypass `dispatch()` and are handled directly:
 
 ## LLM Layer (`llm.py`)
 
-Seven functions. Five make JSON completion calls (`temperature=0`, `response_format=json_object`); two make freeform text calls (`temperature=0.7`, `max_tokens=150`).
+Eight public functions. Six make JSON completion calls (`temperature=0`, `response_format=json_object`); two make freeform text calls (`temperature=0.7`, `max_tokens=150`).
 
-### `classify_intent(text, sender, date_str) → dict`
+### `classify_intent(text, sender, date_str, user_names) → dict`
 
-Called for **every** incoming message. Returns one of seven intents:
+Called for **every** incoming message. Returns one of nine intents plus optional params:
 ```json
 {"intent": "balance",      "params": {"year": 2026, "month": 4}}
-{"intent": "split_change", "params": {"split_aru": 65.0, "split_mon": 35.0}}
+{"intent": "split_change", "params": {"split_user1": 65.0, "split_user2": 35.0}}
 {"intent": "expense",      "params": {}}
 {"intent": "chat",         "params": {}}
 {"intent": "recent",       "params": {"limit": 5}}
 {"intent": "edit",         "params": {"id": 42}}
 {"intent": "delete",       "params": {"id": 42}}
+{"intent": "income",       "params": {}}
+{"intent": "actual_money", "params": {"year": null, "month": null}}
 ```
 
 Key prompt rules:
 - `"expense"` requires a numeric amount — a message like `"cine"` without a number is `"chat"`
-- `"edit"` and `"delete"` require an expense ID number — without an ID, the message is `"chat"`
+- `"income"` requires a numeric amount AND an income keyword — without either, fall back to `"chat"`
+- `"edit"` and `"delete"` require an ID number — without an ID, the message is `"chat"`
+- `"actual_money"` is triggered by phrases like "cuánto tengo", "mi dinero", "dinero real", "cuánto me queda"
 - `"recent"` triggers on keywords like "últimos gastos", "historial", "mis gastos"
 - When in doubt between `"split_change"` and `"chat"`, choose `"chat"`
 - When in doubt between `"expense"` and `"chat"`, choose `"chat"`
+- When in doubt between `"income"` and `"chat"`, choose `"chat"`
 - For `"split_change"`, only return it if both percentages can be confidently extracted and sum to ~100
 - For `"balance"`, always return year+month (defaults to current date if not mentioned)
 
@@ -237,20 +265,44 @@ INSERT INTO settings (key, value) VALUES ('split_aru', '0.63') ON CONFLICT DO NO
 INSERT INTO settings (key, value) VALUES ('split_mon', '0.37') ON CONFLICT DO NOTHING;
 ```
 
-### Key database functions (`database.py`)
+### Key database functions (`database/`)
 
-| Function | Description |
-|---|---|
-| `init_db()` | Creates both tables and seeds split defaults — idempotent |
-| `insert_expense(expense: dict) → int` | Inserts one row, returns `id` |
-| `get_expenses_by_month(year, month) → list[dict]` | All expenses for a month, ordered by fecha |
-| `get_expense_by_id(expense_id) → dict \| None` | Single expense by ID |
-| `get_recent_expenses(limit) → list[dict]` | Last N expenses, ordered by id DESC |
-| `update_expense(expense_id, fields)` | Update specific fields of an expense by ID |
-| `delete_expense(expense_id) → bool` | Delete an expense by ID |
-| `get_setting(key, default) → str` | Key/value read with fallback |
-| `set_setting(key, value)` | Upsert into settings |
-| `get_split() → tuple[float, float]` | Returns `(split_aru, split_mon)` as floats |
+`database.py` is now a package (`database/`) with per-concern modules. All functions below are re-exported by `database/__init__.py` so existing callers can still `import database; database.delete_expense(...)`.
+
+| Function | Module | Description |
+|---|---|---|
+| `init_db()` | `init.py` | Creates all tables and seeds defaults — idempotent |
+| `get_conn()` | `connection.py` | Returns a fresh psycopg2 connection (no pool) |
+| `create_user(email, password, display_name)` | `users.py` | Insert user, returns user dict |
+| `get_user_by_chat_id(chat_id)` | `users.py` | Look up user by Telegram chat_id |
+| `get_user_by_email(email)` | `users.py` | Look up user by email |
+| `get_couple_users(couple_id)` | `users.py` | Both members of a couple |
+| `get_partner(user_id)` | `users.py` | The other user in the couple |
+| `is_user_active(user) → bool` | `users.py` | True if `status` is `"active"` or trial not expired |
+| `update_user_status(user_id, status)` | `users.py` | Set trial/active/suspended |
+| `create_couple(user_id)` | `couples.py` | New couple + invite_code, links user |
+| `join_couple(user_id, invite_code)` | `couples.py` | Link user to existing couple |
+| `leave_couple(user_id)` | `couples.py` | Set `couple_id = NULL` for user |
+| `get_user_couples(user_id)` | `couples.py` | Couple history (active + past) |
+| `get_couple_expenses(couple_id, year, month)` | `couples.py` | Read-only historical expenses |
+| `get_split_for_couple(couple_id)` | `couple_settings.py` | `{user_id: pct}` dict for the couple |
+| `update_split_for_couple(couple_id, splits)` | `couple_settings.py` | Upsert split percentages |
+| `generate_invite_code()` | `utils.py` | 8-char random alphanumeric |
+| `insert_expense(expense) → int` | `expenses.py` | Insert row, return id |
+| `get_expenses_by_month(year, month, couple_id)` | `expenses.py` | Expenses for a month scoped to a couple |
+| `get_expenses_by_month_and_users(year, month, user_ids, couple_id)` | `expenses.py` | Same, restricted to a list of user ids |
+| `get_expenses_by_date_range(couple_id, start, end)` | `expenses.py` | Expenses for a couple in an inclusive date range |
+| `get_expense_by_id(id) → dict \| None` | `expenses.py` | Single expense by ID (returns `couple_id`, `quien_pago_id`, `debt_user_id`) |
+| `get_recent_expenses(limit, couple_id)` | `expenses.py` | Last N expenses for the couple, ordered by id DESC |
+| `update_expense(id, fields) → bool` | `expenses.py` | Update specific fields by ID |
+| `delete_expense(id) → bool` | `expenses.py` | Hard DELETE by ID — returns `rowcount > 0` |
+| `insert_income(income) → int` | `incomes.py` | Insert row, return id |
+| `get_incomes_by_month(year, month, user_id)` | `incomes.py` | Incomes for a month scoped to a user |
+| `get_incomes_by_date_range(user_id, start, end)` | `incomes.py` | Incomes in an inclusive date range |
+| `get_income_by_id(id) → dict \| None` | `incomes.py` | Single income by ID |
+| `get_recent_incomes(limit, user_id)` | `incomes.py` | Last N incomes for the user |
+| `update_income(id, fields) → bool` | `incomes.py` | Update specific fields by ID |
+| `delete_income(id) → bool` | `incomes.py` | Hard DELETE by ID — returns `rowcount > 0` |
 
 ---
 
@@ -265,7 +317,7 @@ Split direction:
 - If **Mon** paid a shared expense → Aru owes `valor × split_aru`; `debt_user_id = partner_id`
 - If **not shared** → full amount stays with payer; `debt_user_id = payer_id` (informational only)
 
-### `compute_balance(expenses, viewer) → dict`
+### `compute_balance(expenses, viewer_id, users) → dict`
 
 Aggregates expenses into two sections: **shared** (debt calculation) and **personal** (viewer-only, no debt).
 
@@ -273,25 +325,26 @@ Aggregates expenses into two sections: **shared** (debt calculation) and **perso
 {
     "mes": "Mayo",
     "personal": {
-        "viewer": "Aru",
+        "viewer_id": 1,
+        "viewer_name": "Aru",
         "viewer_gasto": 50000,        # only Aru's personal expenses
         "gastos_totales": 50000,
         "por_categoria": {"SALUD": 30000, "EDUCACIÓN": 20000, ...}
     },
     "compartido": {
-        "aron_gasto": 100000,          # what Aru paid for shared expenses
-        "mon_gasto": 60000,            # what Mon paid for shared expenses
+        "gastos": [100000, 60000],    # per-user amounts, ordered by sorted(users.keys())
+        "deudas": [22200.0, 59200.0],  # per-user debts, same ordering
         "gastos_totales": 160000,
-        "deudas_por_usuario": {1: 0, 2: 37000},  # user_id -> debt amount
-        
-        "balance_key": "Mon debe a Aron",
-        "deuda_total": 37000.0,        # abs(aron_debe - mon_debe)
+        "balance_key": "Mon debe a Aru",  # or "Pagaron lo mismo" if deuda_total == 0
+        "deuda_total": 37000.0,         # abs difference between the two debts
         "por_categoria": {"ALIMENTACIÓN": 90000, "ENTRETENIMIENTO": 70000, ...}
     }
 }
 ```
 
-**Privacy model:** The `viewer` parameter filters personal expenses — each user only sees their own. Shared expenses are visible to both users. Debt is only computed on shared expenses.
+**Privacy model:** The `viewer_id` parameter filters personal expenses — each user only sees their own. Shared expenses are visible to both users. Debt is only computed on shared expenses.
+
+`gastos` and `deudas` are **ordered arrays**, indexed by `sorted(users.keys())`. This matches the ordering used by the dashboard frontend's `BalanceCard` component (which also expects an array indexed by `memberNames`). Callers that need a per-user map can `zip(sorted_uids, gastos)`.
 
 ---
 
@@ -428,13 +481,22 @@ Editable fields: `valor`, `concepto`, `fecha`, `compartida`, `quien_pago`, `cate
 ```
 "eliminar gasto 42"
     → classify_intent → intent = "delete", params = {id: 42}
-    → handle_delete()
-        → llm.parse_delete(text) → {id: 42}
-        → database.get_expense_by_id(42) → existing expense
-        → show expense details + inline keyboard: [Sí, eliminar] [No]
-        → callback: delete_confirm:42 → database.delete_expense(42) → notify both
-        → callback: delete_cancel:42 → "Gasto no eliminado"
+    → handle_delete(target_id=42)            # id passed directly, no second LLM call
+        → database.get_expense_by_id(42)
+        → if found and couple_id matches user's couple:
+            → deleted = database.delete_expense(42)
+            → if deleted (rowcount > 0):
+                → reply "🗑 Gasto #42 eliminado: <concepto> — $<valor>"
+                → if compartida == "Si": notify partner via Telegram
+            → else (delete_expense returned False, 0 rows affected):
+                → reply "No se pudo eliminar el gasto #42 (¿ya fue borrado?)..."
+        → if expense not found:
+            → database.get_income_by_id(42)
+            → if found and user_id matches: same flow with delete_income()
+            → else: reply "#42 no encontrado como gasto ni como ingreso"
 ```
+
+The handler **logs every decision** at INFO level (sender, chat_id, target_id extraction source, lookup results, deletion result) so failures are diagnosable in `docker logs` without needing to reproduce them. The `delete_expense()` / `delete_income()` return value (a `bool` indicating whether a row was actually deleted) is **checked** — the success message is only sent when a row was removed.
 
 ---
 
@@ -540,6 +602,8 @@ Data persists in the `postgres_data` Docker volume across restarts and image reb
 | Edit with invalid ID | "Gasto #N no encontrado" |
 | Delete with no ID | Help message showing delete syntax |
 | Delete with invalid ID | "Gasto #N no encontrado" |
+| Delete where row already gone | "No se pudo eliminar el gasto #N (¿ya fue borrado?)..." (WARNING logged) |
+| Balance over an empty month | "No hay gastos registrados para ese mes." |
 | API: expense not found | HTTP 404 |
 
 ---
