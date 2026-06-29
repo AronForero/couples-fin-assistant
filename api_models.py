@@ -25,6 +25,7 @@ class ExpenseResponse(BaseModel):
     id: int
     fecha: str
     quien_pago: str
+    quien_pago_id: int | None = None
     subcategoria: str | None = None
     categoria: str | None = None
     concepto: str

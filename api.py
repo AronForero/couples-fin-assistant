@@ -210,6 +210,7 @@ def get_couple_expenses_endpoint(
             "id": e["id"],
             "fecha": str(e["fecha"]),
             "quien_pago": e["quien_pago"],
+            "quien_pago_id": e.get("quien_pago_id"),
             "subcategoria": e.get("subcategoria"),
             "categoria": e.get("categoria"),
             "concepto": e["concepto"],
@@ -240,6 +241,7 @@ def list_expenses(
             "id": e["id"],
             "fecha": str(e["fecha"]),
             "quien_pago": e["quien_pago"],
+            "quien_pago_id": e.get("quien_pago_id"),
             "subcategoria": e.get("subcategoria"),
             "categoria": e.get("categoria"),
             "concepto": e["concepto"],
@@ -303,6 +305,11 @@ async def update_expense(
     if existing.get("couple_id") != user.get("couple_id"):
         raise HTTPException(status_code=403, detail="No tienes acceso a este gasto")
 
+    # Personal expenses can only be edited by the original payer.
+    # Shared expenses can be edited by either member.
+    if existing.get("compartida") != "Si" and existing.get("quien_pago_id") != user.get("id"):
+        raise HTTPException(status_code=403, detail="Solo quien pagó puede editar este gasto personal.")
+
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
     if not fields:
         raise HTTPException(status_code=400, detail="No hay campos para actualizar")
@@ -350,6 +357,7 @@ async def update_expense(
         "id": updated["id"],
         "fecha": str(updated["fecha"]),
         "quien_pago": updated["quien_pago"],
+        "quien_pago_id": updated.get("quien_pago_id"),
         "subcategoria": updated.get("subcategoria"),
         "categoria": updated.get("categoria"),
         "concepto": updated["concepto"],
@@ -371,6 +379,11 @@ async def delete_expense(
     # Verify expense belongs to user's active couple
     if existing.get("couple_id") != user.get("couple_id"):
         raise HTTPException(status_code=403, detail="No tienes acceso a este gasto")
+
+    # Personal expenses can only be deleted by the original payer.
+    # Shared expenses can be deleted by either member.
+    if existing.get("compartida") != "Si" and existing.get("quien_pago_id") != user.get("id"):
+        raise HTTPException(status_code=403, detail="Solo quien pagó puede eliminar este gasto personal.")
 
     database.delete_expense(expense_id)
 

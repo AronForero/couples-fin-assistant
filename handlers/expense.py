@@ -104,9 +104,15 @@ async def handle_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     confirm = _delayed_note(update) + _CONFIRM_TEMPLATE.format(**expense)
-    for u in couple_users:
-        if u.get("chat_id"):
-            try:
-                await context.bot.send_message(chat_id=u["chat_id"], text=confirm)
-            except Exception:
-                logger.warning("Could not send confirmation to %s", u["chat_id"])
+
+    if expense.get("compartida") == "Si":
+        # Shared expense: notify both members
+        for u in couple_users:
+            if u.get("chat_id"):
+                try:
+                    await context.bot.send_message(chat_id=u["chat_id"], text=confirm)
+                except Exception:
+                    logger.warning("Could not send confirmation to %s", u["chat_id"])
+    else:
+        # Personal expense: only the sender
+        await msg.reply_text(confirm)

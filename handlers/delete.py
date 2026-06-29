@@ -85,6 +85,18 @@ async def handle_delete(
             await msg.reply_text("Este gasto no pertenece a tu pareja actual.")
             return
 
+        # Personal expenses can only be deleted by the original payer.
+        # Shared expenses can be deleted by either member.
+        if expense.get("compartida") == "No" and expense.get("quien_pago_id") != user.get("id"):
+            logger.info(
+                "delete rejected: expense #%s is personal, paid by user_id=%s, requester is user_id=%s",
+                target_id,
+                expense.get("quien_pago_id"),
+                user.get("id"),
+            )
+            await msg.reply_text("Solo quien pagó puede eliminar este gasto personal.")
+            return
+
         deleted = database.delete_expense(target_id)
         if not deleted:
             logger.warning(

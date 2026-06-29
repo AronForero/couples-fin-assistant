@@ -81,6 +81,18 @@ async def _edit_expense(
         await update.message.reply_text("Este gasto no pertenece a tu pareja actual.")
         return
 
+    # Personal expenses can only be edited by the original payer.
+    # Shared expenses can be edited by either member.
+    if existing.get("compartida") == "No" and existing.get("quien_pago_id") != user.get("id"):
+        logger.info(
+            "edit rejected: expense #%s is personal, paid by user_id=%s, requester is user_id=%s",
+            expense_id,
+            existing.get("quien_pago_id"),
+            user.get("id"),
+        )
+        await update.message.reply_text("Solo quien pagó puede editar este gasto personal.")
+        return
+
     couple_users = database.get_couple_users(user["couple_id"]) if user.get("couple_id") else []
 
     fields_to_update = {k: v for k, v in edit_data.items() if k in _EXPENSE_EDITABLE_FIELDS and k != "id"}
