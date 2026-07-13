@@ -126,6 +126,15 @@ def get_me(user: dict = Depends(api_auth.get_current_user)):
         couple = database.get_couple_by_id(user["couple_id"])
         user["invite_code"] = couple["invite_code"] if couple else None
 
+    if user.get("status") == "trial":
+        from datetime import datetime, timedelta, timezone
+        created = user.get("created_at") or datetime.now(timezone.utc)
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) >= created + timedelta(days=30):
+            database.update_user_status(user["id"], "suspended")
+            user["status"] = "suspended"
+
     user["created_at"] = str(user.get("created_at", ""))
     user["status_updated_at"] = str(user.get("status_updated_at")) if user.get("status_updated_at") else None
     return user
