@@ -18,6 +18,7 @@ from handlers.chat import handle_chat
 from handlers.recent import handle_recent
 from handlers.edit import handle_edit
 from handlers.delete import handle_delete
+from handlers.debt import handle_debt
 from handlers.link import handle_link
 from handlers.actual_money import handle_actual_money
 
@@ -130,6 +131,9 @@ async def dispatch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     elif intent == "delete":
         await handle_delete(update, context, target_id=params.get("id"))
+
+    elif intent == "debt":
+        await handle_debt(update, context)
 
     elif intent == "income":
         await handle_income(update, context)

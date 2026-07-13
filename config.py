@@ -55,4 +55,7 @@ CATEGORIES = {
     "IMPREVISTOS": [
         "Obsequios", "Otros",
     ],
+    "PRÉSTAMO": [
+        "Préstamo personal",
+    ],
 }

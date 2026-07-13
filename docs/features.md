@@ -137,6 +137,44 @@ El bot identifica ingresos cuando el mensaje contiene alguna de estas palabras:
 
 ---
 
+## Registrar una deuda
+
+Además de gastos e ingresos, podés registrar deudas directas entre los dos miembros de la pareja. Es útil cuando uno le prestó dinero al otro fuera de un gasto compartido.
+
+### Ejemplos
+
+| Lo que escribes | Lo que entiende el bot |
+|---|---|
+| `Debo 30000 a Moni por gasolina` | Aru le debe $30.000 a Moni por gasolina |
+| `Moni me debe 50000 por el cine` | Moni le debe $50.000 a Aru por el cine |
+| `Le presté 20000 a Moni` | Moni le debe $20.000 a Aru |
+| `Le pagué 30000 a Moni por la gasolina` | Aru le pagó $30.000 a Moni (cancela la deuda) |
+
+### Cómo funciona
+
+- La deuda se registra como un gasto compartido con la categoría **PRÉSTAMO**.
+- El deudor paga el 100% del monto (no se aplica el porcentaje de gastos compartidos).
+- La deuda aparece en el balance como parte de lo que debés o te deben.
+- Para saldar una deuda, registrá un pago en sentido contrario: `"Le pagué 30000 a Moni por la gasolina"`. Las dos entradas se cancelan en el balance.
+
+### Confirmación
+
+```
+✅ Gasto #5 registrado:
+📅 Fecha: 2026-07-11
+👤 Quien pagó: Moni
+🏷 SubCategoría: Préstamo personal
+📂 Categoría: PRÉSTAMO
+📝 Concepto: gasolina
+💰 Valor: $30,000
+🤝 Compartida: Si
+💸 Valor a pagar: $30,000
+```
+
+Ambos miembros de la pareja reciben la confirmación.
+
+---
+
 ## Ver el balance del mes
 
 Escribí `Balance` para ver el resumen del mes actual. Podés mencionar otro mes.

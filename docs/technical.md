@@ -126,6 +126,9 @@ Text message received
         ├── {"intent": "income",       "params": {}}
         │       └──▶ handle_income()
         │
+        ├── {"intent": "debt",         "params": {}}
+        │       └──▶ handle_debt()
+        │
         ├── {"intent": "actual_money", "params": {"year": 2026, "month": 4}}
         │       └──▶ handle_actual_money(year=2026, month=4)
         │
@@ -147,11 +150,11 @@ Commands bypass `dispatch()` and are handled directly:
 
 ## LLM Layer (`llm.py`)
 
-Eight public functions. Six make JSON completion calls (`temperature=0`, `response_format=json_object`); two make freeform text calls (`temperature=0.7`, `max_tokens=150`).
+Nine public functions. Seven make JSON completion calls (`temperature=0`, `response_format=json_object`); two make freeform text calls (`temperature=0.7`, `max_tokens=150`).
 
 ### `classify_intent(text, sender, date_str, user_names) → dict`
 
-Called for **every** incoming message. Returns one of nine intents plus optional params:
+Called for **every** incoming message. Returns one of ten intents plus optional params:
 ```json
 {"intent": "balance",      "params": {"year": 2026, "month": 4}}
 {"intent": "split_change", "params": {"split_user1": 65.0, "split_user2": 35.0}}
@@ -162,12 +165,14 @@ Called for **every** incoming message. Returns one of nine intents plus optional
 {"intent": "delete",       "params": {"id": 42}}
 {"intent": "income",       "params": {}}
 {"intent": "actual_money", "params": {"year": null, "month": null}}
+{"intent": "debt",         "params": {}}
 ```
 
 Key prompt rules:
 - `"expense"` requires a numeric amount — a message like `"cine"` without a number is `"chat"`
 - `"income"` requires a numeric amount AND an income keyword — without either, fall back to `"chat"`
 - `"edit"` and `"delete"` require an ID number — without an ID, the message is `"chat"`
+- `"debt"` is triggered by "debo", "me debe", "presté", "préstamo", "pagué a" — takes priority over `"expense"` when these keywords are present
 - `"actual_money"` is triggered by phrases like "cuánto tengo", "mi dinero", "dinero real", "cuánto me queda"
 - `"recent"` triggers on keywords like "últimos gastos", "historial", "mis gastos"
 - When in doubt between `"split_change"` and `"chat"`, choose `"chat"`
@@ -216,6 +221,12 @@ Returns: `{"id": 42, "compartida": "Si"}` — only includes fields the user ment
 Called when `intent == "delete"`. Extracts the expense ID from messages like "eliminar gasto 42".
 
 Returns: `{"id": 42}`. Returns `None` if no ID found.
+
+### `parse_debt(text, sender_name, date_str, user_names) → dict | None`
+
+Called when `intent == "debt"`. Extracts debt data: deudor (who owes), acreedor (who is owed), concepto, valor, fecha.
+
+Returns: `{"fecha": "2026-07-11", "deudor": "Aru", "acreedor": "Moni", "concepto": "gasolina", "valor": 30000}`. Returns `None` if no valid debt can be extracted.
 
 ---
 
@@ -497,6 +508,26 @@ Editable fields: `valor`, `concepto`, `fecha`, `compartida`, `quien_pago`, `cate
 ```
 
 The handler **logs every decision** at INFO level (sender, chat_id, target_id extraction source, lookup results, deletion result) so failures are diagnosable in `docker logs` without needing to reproduce them. The `delete_expense()` / `delete_income()` return value (a `bool` indicating whether a row was actually deleted) is **checked** — the success message is only sent when a row was removed.
+
+---
+
+## Debt Pipeline
+
+```
+"Debo 30000 a Moni por gasolina"
+    → classify_intent → intent = "debt", params = {}
+    → handle_debt()
+        → llm.parse_debt(text) → {deudor: "Aru", acreedor: "Moni", concepto: "gasolina", valor: 30000}
+        → resolve deudor/acreedor names to user IDs via get_couple_users
+        → build expense dict: compartida="Si", categoria="PRÉSTAMO",
+          quien_pago_id=acreedor_id, debt_user_id=deudor_id, valor_a_pagar=valor (100%)
+        → database.insert_expense(expense)
+        → notify both partners
+```
+
+Debts are stored as shared expenses with a 100%/0% split override (not the couple's default split). The `valor_a_pagar` field is set directly to the full amount, bypassing `finance.compute_split()`.
+
+To settle a debt, the user creates a reverse entry: `"Le pagué 30000 a Moni"` → the payer and debtor swap roles, and the two entries cancel out in `compute_balance()`.
 
 ---
 

@@ -52,6 +52,10 @@ Intents:
    Triggered by: "cuánto tengo", "cuánto dinero tengo", "mi dinero", "dinero real", "cuánto me queda", "balance real", "cuánto llevo", "cuánto tengo en el mes".
    Params: {{"year": <int>|null, "month": <int>|null}}
    If no year/month is mentioned, leave both null (will default to current month).
+10. "debt" — user is registering a direct debt or loan between the two couple members. Triggered by verbs like "debo", "le debo", "me debe", "le presté", "le prestamos", "préstamo", "prestamo".
+   The message MUST contain a numeric value AND one of these debt keywords.
+   If the message says "le pagué" or "ya le pagué", it's a debt settlement (still intent "debt").
+   Params: {{}}
 
 Rules:
 - "expense" requires a numeric amount. A message like "cine" without a number is "chat".
@@ -63,6 +67,8 @@ Rules:
 - "edit" and "delete" require an ID number. If no ID is present, treat as "chat".
 - "edit" keywords: "editar", "corregir", "modificar", "cambia el gasto", "el gasto X era/era en realidad", "el ingreso X era".
 - "delete" keywords: "eliminar", "borrar", "quitar", "quita el gasto", "quita el ingreso".
+- When the message contains "debo", "debe", "presté", "préstamo", or "pagué a", classify as "debt" (not "expense"), even if there's a concept + value that looks like an expense.
+- "debt" requires a numeric value. "Le debo a Moni" without a number is "chat".
 
 Return format examples:
 {{"intent": "balance", "params": {{"year": 2026, "month": 4}}}}
@@ -74,7 +80,8 @@ Return format examples:
 {{"intent": "delete", "params": {{"id": 42}}}}
 {{"intent": "income", "params": {{}}}}
 {{"intent": "actual_money", "params": {{"year": 2026, "month": 4}}}}
-{{"intent": "actual_money", "params": {{"year": null, "month": null}}}}"""
+{{"intent": "actual_money", "params": {{"year": null, "month": null}}}}
+{{"intent": "debt", "params": {{}}}}"""
 
 
 def _build_expense_system(user1: str, user2: str, categories_text: str) -> str:
@@ -183,6 +190,28 @@ Ejemplos:
 Si el mensaje NO contiene un ID, devuelve exactamente: null"""
 
 
+def _build_debt_system(user1: str, user2: str) -> str:
+    return f"""Eres un asistente de finanzas personales. Tu ÚNICA tarea es extraer datos de una DEUDA (préstamo) entre los dos miembros de la pareja: {user1} y {user2}.
+
+Reglas de extracción:
+1. Valor: cualquier número positivo en el mensaje.
+2. Concepto: texto descriptivo de la deuda (ej. "gasolina", "suplemento", "cine"), sin incluir el número ni los nombres.
+3. Deudor: la persona que DEBE el dinero. Si el mensaje dice "debo" o "le debo a X", el deudor es quien escribe. Si dice "X me debe", el deudor es X. Si dice "le presté a X", el deudor es X.
+4. Acreedor: la persona a quien se le debe el dinero. Es el contrario del deudor. Si el mensaje dice "le pagué a X", el acreedor es X (el que recibe el pago).
+5. Fecha: si el mensaje menciona una fecha, úsala. Si no, usa la fecha del mensaje.
+
+Devuelve EXACTAMENTE este JSON (sin texto adicional):
+{{
+  "fecha": "YYYY-MM-DD",
+  "deudor": "{user1}" o "{user2}",
+  "acreedor": "{user1}" o "{user2}",
+  "concepto": "...",
+  "valor": 12345
+}}
+
+Si el mensaje NO contiene un concepto y un valor numérico, devuelve exactamente: null"""
+
+
 # ── LLM helpers ──────────────────────────────────────────────────────────────
 
 def _chat_json(system: str, user: str) -> dict | None:
@@ -224,7 +253,7 @@ def classify_intent(text: str, sender: str, date_str: str, user_names: tuple[str
         data = _chat_json(system, user_msg)
         intent = data.get("intent", "expense")
         params = data.get("params", {})
-        if intent not in {"balance", "split_change", "expense", "chat", "recent", "edit", "delete", "income", "actual_money"}:
+        if intent not in {"balance", "split_change", "expense", "chat", "recent", "edit", "delete", "income", "actual_money", "debt"}:
             intent = "expense"
         return {"intent": intent, "params": params}
     except Exception:
@@ -310,4 +339,23 @@ def parse_delete(text: str, sender_name: str, date_str: str) -> dict | None:
         return parsed
     except Exception:
         logger.exception("parse_delete failed")
+        return None
+
+
+def parse_debt(text: str, sender_name: str, date_str: str, user_names: tuple[str, str]) -> dict | None:
+    """Extract debt data from a message like 'Debo 30000 a Moni por gasolina'."""
+    system = _build_debt_system(user_names[0], user_names[1])
+    user_msg = f"Remitente: {sender_name}\nFecha del mensaje: {date_str}\nMensaje: {text}"
+    try:
+        parsed = _chat_json(system, user_msg)
+        if parsed is None:
+            return None
+        if set(parsed.keys()) == {"result"}:
+            parsed = parsed["result"]
+        required = {"fecha", "deudor", "acreedor", "concepto", "valor"}
+        if not required.issubset(parsed.keys()):
+            return None
+        return parsed
+    except Exception:
+        logger.exception("parse_debt failed")
         return None

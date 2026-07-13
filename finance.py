@@ -148,11 +148,17 @@ def compute_actual_money(
 
     personal_expenses = 0
     shared_total = 0
+    shared_my_share = 0
 
     for e in expenses:
         valor = int(e["valor"])
         if e.get("compartida") == "Si":
             shared_total += valor
+            vap = float(e.get("valor_a_pagar") or 0)
+            if e.get("debt_user_id") == user_id:
+                shared_my_share += vap
+            elif e.get("quien_pago_id") == user_id:
+                shared_my_share += valor - int(vap)
         elif e.get("quien_pago_id") == user_id:
             personal_expenses += valor
 
@@ -160,8 +166,6 @@ def compute_actual_money(
         split_pct = float(splits[user_id])
     else:
         split_pct = 0.50
-
-    shared_my_share = round(shared_total * split_pct)
 
     actual_money = total_income - personal_expenses - shared_my_share
 
